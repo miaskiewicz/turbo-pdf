@@ -21,6 +21,21 @@ impl ComputedStyle {
     pub fn get(&self, property: &str) -> Option<&str> {
         self.map.get(property).map(String::as_str)
     }
+
+    /// Build a computed style directly from property/value pairs. Useful for
+    /// programmatic node styles and for layout-level testing.
+    pub fn from_pairs<I, K, V>(pairs: I) -> ComputedStyle
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let map = pairs
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        ComputedStyle { map }
+    }
 }
 
 /// A styled element node.

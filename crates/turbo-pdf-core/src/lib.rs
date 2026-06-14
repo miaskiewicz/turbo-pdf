@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 pub mod error;
+pub mod layout;
 pub mod node;
 pub mod options;
 pub mod style;

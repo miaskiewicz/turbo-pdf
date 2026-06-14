@@ -51,3 +51,6 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# ---- Claude Code local state / agent worktrees ----
+.claude/

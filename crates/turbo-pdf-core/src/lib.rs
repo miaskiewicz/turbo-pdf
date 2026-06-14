@@ -18,6 +18,11 @@ mod template;
 pub mod text;
 
 pub use error::{CompileError, Diagnostics, ErrorCode, Lint, LintCode, RenderError, Span};
+pub use layout::fragment::{
+    BreakMeta, Fragment, FragmentContent, NodeId, PositionedGlyph, RepeatKind,
+};
+pub use layout::layout;
+pub use layout::value::{BreakRule, Rgba};
 pub use node::{Attr, Element, Node, TKind, Tag};
 pub use options::{CompileOptions, MissingPolicy, DEFAULT_INCLUDE_DEPTH};
 pub use style::{build_cascade, style_tree, Cascade, ComputedStyle, StyledElement, StyledNode};

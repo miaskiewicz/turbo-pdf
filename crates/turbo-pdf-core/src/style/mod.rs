@@ -11,15 +11,30 @@ pub use parser::{parse_stylesheet, AtRule, Declaration, Rule, Stylesheet};
 pub use token::{StyleToken, TokenSet};
 
 /// A minimal user-agent stylesheet (§4.2): the defaults the cascade starts from.
+/// Block elements need no rule (display resolves to `block` by default); this
+/// declares the inline, table, and list-item defaults plus a few typographic
+/// ones so real HTML lays out without author CSS.
 const UA_CSS: &str = "
 b { font-weight: bold }
 strong { font-weight: bold }
 i { font-style: italic }
 em { font-style: italic }
-a { color: #0000ee }
+a { color: #0000ee; display: inline }
 h1 { font-weight: bold; font-size: 2em }
 h2 { font-weight: bold; font-size: 1.5em }
-small { font-size: 0.8em }
+small { font-size: 0.8em; display: inline }
+span { display: inline }
+b, strong, i, em { display: inline }
+code, kbd, samp { display: inline }
+sub, sup, abbr, cite, q, mark, u, s, label, time { display: inline }
+sub { vertical-align: sub }
+sup { vertical-align: super }
+table { display: table }
+thead { display: table-header-group }
+tfoot { display: table-footer-group }
+tr { display: table-row }
+td, th { display: table-cell }
+li { display: list-item }
 ";
 
 fn add_leveled(rules: &mut Vec<LeveledRule>, order: &mut usize, level: u8, sheet: Stylesheet) {

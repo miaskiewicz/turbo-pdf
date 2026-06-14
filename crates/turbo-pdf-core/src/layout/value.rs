@@ -655,6 +655,7 @@ fn box_sizing_of(s: &ComputedStyle) -> BoxSizing {
 
 /// Resolve a [`ComputedStyle`] into a typed [`BoxStyle`] for layout.
 pub fn resolve_box_style(s: &ComputedStyle, ctx: ResolveCtx) -> BoxStyle {
+    crate::hot!("layout.resolve_box_style");
     let fs = resolve_font_size(s, ctx.parent_font_size);
     resolve_box_metrics(s, fs, ctx)
 }

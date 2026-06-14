@@ -12,5 +12,8 @@ exclude-files = [
     "benches/*",
     "crates/turbo-pdf-napi/*",
     "crates/turbo-pdf-wasm/*",
+    # Opt-in hot-path instrumentation (the `perf` feature); off in normal builds
+    # and covered functionally by the `--features perf` tests in tests/perf.rs.
+    "crates/turbo-pdf-core/src/perf.rs",
 ]
 fail-under = 100.0

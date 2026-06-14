@@ -15,6 +15,7 @@ pub mod layout;
 pub mod node;
 pub mod options;
 pub mod paginate;
+pub mod perf;
 pub mod render;
 pub mod style;
 mod template;

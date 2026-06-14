@@ -13,6 +13,12 @@ rust-version.workspace = true
 # `cognitive_complexity` lint is intentionally not used: it double-counts macro
 # expansions (e.g. `assert_eq!`) and fires false positives on test functions.
 
+[features]
+# Hot-path instrumentation (Phase 13, §13). Off by default so production builds
+# pay nothing; enable to read the counters in `perf` (e.g. `cargo test --features
+# perf`, `cargo bench --features perf`).
+perf = []
+
 [dependencies]
 minijinja = { workspace = true }
 serde = { workspace = true }

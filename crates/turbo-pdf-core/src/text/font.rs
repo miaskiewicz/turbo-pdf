@@ -125,6 +125,7 @@ impl FontFace {
     }
 
     fn ttf(&self) -> TtfFace<'_> {
+        crate::hot!("font.ttf.parse");
         TtfFace::parse(&self.data, 0).expect("font validated at construction")
     }
 
@@ -196,6 +197,7 @@ impl FontFace {
     }
 
     fn shape_uncached(&self, text: &str) -> Vec<ShapedGlyph> {
+        crate::hot!("font.shape");
         let face = RbFace::from_slice(&self.data, 0).expect("font validated at construction");
         let mut buffer = UnicodeBuffer::new();
         buffer.push_str(text);

@@ -1,0 +1,32 @@
+{
+  "name": "@turbo-pdf/bench-competitive",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "Competitive benchmark harness: turbo-pdf vs incumbent PDF engines (Phase 14, spec §10.2).",
+  "license": "MIT",
+  "scripts": {
+    "bench": "node --experimental-strip-types src/cli.ts",
+    "bench:smoke": "node --experimental-strip-types src/cli.ts --runs 5 --warmup 1",
+    "bench:full": "node --experimental-strip-types src/cli.ts --runs 100 --warmup 10",
+    "typecheck": "tsgo --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "^18",
+    "pixelmatch": "^6.0.0",
+    "pngjs": "^7.0.0"
+  },
+  "optionalDependencies": {
+    "@react-pdf/renderer": "^4.0.0",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
+    "pdfkit": "^0.15.0",
+    "playwright": "^1.48.0",
+    "puppeteer": "^23.0.0"
+  },
+  "dependencies": {
+    "react": "^18"
+  }
+}

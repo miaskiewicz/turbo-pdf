@@ -7,17 +7,23 @@
     "jsx": "react-jsx",
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
     "declaration": true,
     "noEmit": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
     "types": ["node"]
   },
   "include": [
     "packages/react/src",
     "packages/react/test",
     "packages/template/src",
-    "packages/template/test"
+    "packages/template/test",
+    "benches/competitive/src"
   ]
 }

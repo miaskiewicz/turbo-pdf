@@ -5,4 +5,5 @@
 
 pub mod boxgen;
 pub mod fragment;
+pub mod inline;
 pub mod value;

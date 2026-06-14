@@ -1,6 +1,11 @@
 # Coverage gate for the shipped crates. Dev tooling (tools/*) and benchmark
 # harnesses (benches/*) are not part of the product surface and are excluded.
+# The N-API binding (crates/turbo-pdf-napi/*) is a cdylib marshaling shim around
+# the covered core: it cannot be line-instrumented as a Node addon, so its files
+# are excluded from the coverage surface and the crate is excluded from the
+# tarpaulin build (`exclude`) so the addon's native-link step never runs here.
 [default]
 workspace = true
-exclude-files = ["tools/*", "benches/*"]
+exclude = ["turbo-pdf-napi"]
+exclude-files = ["tools/*", "benches/*", "crates/turbo-pdf-napi/*"]
 fail-under = 100.0

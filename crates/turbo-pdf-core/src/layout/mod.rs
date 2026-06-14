@@ -5,6 +5,7 @@
 
 pub mod block;
 pub mod boxgen;
+pub mod flex;
 pub mod fragment;
 pub mod inline;
 pub mod value;

@@ -21,10 +21,10 @@ use super::value::{
     resolve_box_style, BoxSizing, BoxStyle, LengthPct, ResolveCtx, DEFAULT_FONT_SIZE,
 };
 
-/// Shared layout inputs threaded through the recursion.
-struct Ctx<'a> {
-    fonts: &'a FontRegistry,
-    diags: &'a mut Diagnostics,
+/// Shared layout inputs threaded through the recursion. Shared with `flex.rs`.
+pub(crate) struct Ctx<'a> {
+    pub(crate) fonts: &'a FontRegistry,
+    pub(crate) diags: &'a mut Diagnostics,
 }
 
 fn resolve(lb: &LayoutBox, cb_width: f32, parent_fs: f32) -> BoxStyle {
@@ -112,7 +112,7 @@ fn text_run(item: &InlineItem, parent_fs: f32, cw: f32, fonts: &FontRegistry) ->
     })
 }
 
-fn build_runs(
+pub(crate) fn build_runs(
     items: &[InlineItem],
     parent_fs: f32,
     cw: f32,
@@ -235,9 +235,10 @@ fn layout_content(
     ctx: &mut Ctx,
 ) -> (Vec<Fragment>, f32) {
     match &lb.kind {
-        BoxKind::Block(kids) | BoxKind::Flex(kids) | BoxKind::Table(kids) => {
+        BoxKind::Block(kids) | BoxKind::Table(kids) => {
             layout_block_flow(kids, cx, cy, cw, bs.font_size, ctx)
         }
+        BoxKind::Flex(kids) => super::flex::layout_flex(lb, kids, cx, cy, cw, bs.font_size, ctx),
         BoxKind::Lines(items) => layout_lines(items, bs, cx, cy, cw, ctx),
         BoxKind::Directive(_) => (Vec::new(), 0.0),
     }
@@ -264,7 +265,36 @@ fn content_kind(lb: &LayoutBox, bs: &BoxStyle) -> FragmentContent {
     }
 }
 
-/// Lay out one block-level box with its border-box top-left at `(bx, by)`.
+/// Lay out a box whose border-box width is already decided (`bbw`), at border-box
+/// top-left `(bx, by)`. Used by `flex.rs`, which sizes items itself.
+pub(crate) fn layout_box_sized(
+    lb: &LayoutBox,
+    bs: &BoxStyle,
+    bx: f32,
+    by: f32,
+    bbw: f32,
+    ctx: &mut Ctx,
+) -> Fragment {
+    let bw = bs.border.widths();
+    let content_x = bx + bw.left + bs.padding.left;
+    let content_y = by + bw.top + bs.padding.top;
+    let content_w = (bbw - bs.padding.horizontal() - bw.horizontal()).max(0.0);
+    let (children, content_h) = layout_content(lb, bs, content_x, content_y, content_w, ctx);
+    let bbh = content_box_height(bs, content_h) + bs.padding.vertical() + bw.vertical();
+    Fragment {
+        node_id: lb.node_id,
+        x: bx,
+        y: by,
+        width: bbw,
+        height: bbh,
+        content: content_kind(lb, bs),
+        break_meta: break_meta_of(bs),
+        children,
+    }
+}
+
+/// Lay out one block-level box with its border-box top-left at `(bx, by)`,
+/// resolving its width against the containing block.
 fn layout_box(
     lb: &LayoutBox,
     bx: f32,
@@ -275,22 +305,7 @@ fn layout_box(
 ) -> Fragment {
     let bs = resolve(lb, cb_width, parent_fs);
     let bbw = border_box_width(&bs, cb_width);
-    let bw = bs.border.widths();
-    let content_x = bx + bw.left + bs.padding.left;
-    let content_y = by + bw.top + bs.padding.top;
-    let content_w = (bbw - bs.padding.horizontal() - bw.horizontal()).max(0.0);
-    let (children, content_h) = layout_content(lb, &bs, content_x, content_y, content_w, ctx);
-    let bbh = content_box_height(&bs, content_h) + bs.padding.vertical() + bw.vertical();
-    Fragment {
-        node_id: lb.node_id,
-        x: bx,
-        y: by,
-        width: bbw,
-        height: bbh,
-        content: content_kind(lb, &bs),
-        break_meta: break_meta_of(&bs),
-        children,
-    }
+    layout_box_sized(lb, &bs, bx, by, bbw, ctx)
 }
 
 /// Lay out a box tree (root from `boxgen::build_box_tree`) into a galley fragment

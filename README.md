@@ -6,9 +6,32 @@ layout → automatic pagination → PDF, shipped as a tiny native addon for Node
 WebAssembly. No Chromium download, no 200 ms browser spin-up, deterministic output.
 
 > npm: `turbo-html2pdf` (Node) · `turbo-html2pdf-wasm` (browser) ·
-> `turbo-html2pdf-react` / `turbo-html2pdf-template` (authoring). The name says
-> exactly what it does — HTML → PDF — and avoids clashing with the unrelated
-> "TurboPDF".
+> `turbo-html2pdf-react` / `turbo-html2pdf-template` (authoring) · `turbo-html2pdf`
+> on PyPI (Python). The name says exactly what it does — HTML → PDF — and avoids
+> clashing with the unrelated "TurboPDF".
+
+## 🌐 It generates PDFs entirely in the browser
+
+Because the engine is pure Rust → WebAssembly (~3 MB), it runs **100% client-side**
+— no server, no backend, no Chromium. A user pastes HTML/CSS, supplies a font as a
+`Uint8Array`, and gets PDF bytes, all in the browser tab.
+
+As far as we know, **no other library does HTML/CSS → PDF in the browser**: the
+HTML→PDF tools that match its fidelity (Puppeteer, Playwright, Gotenberg, WeasyPrint,
+wkhtmltopdf) are all **server-side** — they drive a headless browser or a native
+binary you have to host. The libraries that *do* run in the browser (jsPDF, PDFKit,
+react-pdf) are **draw APIs**, not HTML/CSS layout engines — you place every box by
+hand. turbo-html2pdf is the only one that is *both* a real HTML/CSS engine *and*
+runs with zero server.
+
+```js
+import init, { compile } from 'turbo-html2pdf-wasm'
+await init()                                  // load the ~3 MB wasm once
+const program = compile('<h1>{{ t }}</h1>')
+const { pdf } = program.render({ data: { t: 'Hello' }, css: 'h1{font-size:24pt}',
+                                 fonts: [{ data: fontBytes, family: 'Inter' }] })
+// `pdf` is a Uint8Array — download it, no round-trip to a server
+```
 
 ---
 

@@ -248,7 +248,10 @@ fn lines_handle_text_directive_and_atomic() {
 fn empty_registry_renders_no_text_lines() {
     let root = build_box_tree(&[el("p", &[], vec![txt("hi")])]);
     let mut diags = Diagnostics::default();
-    let frag = layout_tree(&root, 500.0, &FontRegistry::new(), &mut diags);
+    // `default()` is a genuinely empty registry (no caller *and* no bundled
+    // faces, even with the `bundled-fonts` feature on, which `new()` would
+    // populate); with no selectable face the runs are dropped.
+    let frag = layout_tree(&root, 500.0, &FontRegistry::default(), &mut diags);
     assert_eq!(text_lines(&frag), 0); // no face selectable -> runs dropped
 }
 

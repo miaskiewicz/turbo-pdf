@@ -14,6 +14,15 @@ rust-version.workspace = true
 # expansions (e.g. `assert_eq!`) and fires false positives on test functions.
 
 [features]
+# `bundled-fonts` is ON by default: the core embeds a small set of OFL-licensed
+# faces (Inter/Roboto, Liberation Serif/PT Serif, Fira Code/IBM Plex Mono) so a
+# document renders with ZERO caller-supplied fonts — `font-family: sans-serif`
+# etc. resolve against the embedded set. Disabling it (`--no-default-features`)
+# makes the build byte-for-byte the no-bundled build: no font bytes are embedded
+# and `FontRegistry` behaves exactly as a registry of only caller faces.
+default = ["bundled-fonts"]
+bundled-fonts = []
+
 # Hot-path instrumentation (Phase 13, §13). Off by default so production builds
 # pay nothing; enable to read the counters in `perf` (e.g. `cargo test --features
 # perf`, `cargo bench --features perf`).

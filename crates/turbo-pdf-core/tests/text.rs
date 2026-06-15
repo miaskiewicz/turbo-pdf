@@ -101,7 +101,7 @@ fn shape_produces_glyphs() {
 
 #[test]
 fn registry_select_by_weight_and_style() {
-    let mut reg = FontRegistry::new();
+    let mut reg = FontRegistry::default();
     assert!(reg.is_empty());
     reg.add(evolventa());
     reg.add(evolventa_bold());
@@ -122,7 +122,9 @@ fn registry_unknown_family_falls_back_to_first() {
     let mut reg = FontRegistry::new();
     reg.add(evolventa());
     assert!(reg.select(&["Nonexistent"], 400, false).is_some());
-    assert!(FontRegistry::new().select(&["x"], 400, false).is_none());
+    // A genuinely empty registry (`default()` carries no bundled faces) selects
+    // nothing; `new()` would carry the bundled fallbacks under `bundled-fonts`.
+    assert!(FontRegistry::default().select(&["x"], 400, false).is_none());
 }
 
 #[test]

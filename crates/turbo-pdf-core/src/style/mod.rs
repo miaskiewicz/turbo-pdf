@@ -14,7 +14,17 @@ pub use token::{StyleToken, TokenSet};
 /// Block elements need no rule (display resolves to `block` by default); this
 /// declares the inline, table, and list-item defaults plus a few typographic
 /// ones so real HTML lays out without author CSS.
+///
+/// The `font-family` defaults pin the document to the CSS generic families so a
+/// doc renders with no author CSS: `body` resolves to `sans-serif` (inherited by
+/// everything) and code-ish elements to `monospace`. With the default
+/// `bundled-fonts` feature the [`FontRegistry`](crate::FontRegistry) expands
+/// `sans-serif` → Inter → Roboto, `serif` → Liberation Serif → PT Serif, and
+/// `monospace` → Fira Code → IBM Plex Mono, so these resolve to embedded faces
+/// with no caller fonts.
 const UA_CSS: &str = "
+body { font-family: sans-serif }
+code, kbd, samp, pre { font-family: monospace }
 b { font-weight: bold }
 strong { font-weight: bold }
 i { font-style: italic }

@@ -75,7 +75,7 @@ test('addon is built (otherwise the suite is skipped)', (t) => {
 test('compile + render produces a valid multi-line PDF', { skip: !lib }, () => {
   const font = readFileSync(FONT)
   const program = lib.compile(TEMPLATE)
-  const result = program.render({ data: DATA, css: CSS, fonts: [font], now: 0 })
+  const result = program.render({ data: DATA, css: CSS, fonts: [{ data: font, family: 'Go' }], now: 0 })
 
   assert.ok(Buffer.isBuffer(result.pdf), 'pdf is a Buffer')
   assert.equal(result.pdf.subarray(0, 5).toString('latin1'), '%PDF-', 'PDF magic')
@@ -92,8 +92,8 @@ test('compile + render produces a valid multi-line PDF', { skip: !lib }, () => {
 
 test('one-shot render matches and is byte-deterministic', { skip: !lib }, () => {
   const font = readFileSync(FONT)
-  const a = lib.render(TEMPLATE, { data: DATA, css: CSS, fonts: [font], now: 0 })
-  const b = lib.render(TEMPLATE, { data: DATA, css: CSS, fonts: [font], now: 0 })
+  const a = lib.render(TEMPLATE, { data: DATA, css: CSS, fonts: [{ data: font, family: 'Go' }], now: 0 })
+  const b = lib.render(TEMPLATE, { data: DATA, css: CSS, fonts: [{ data: font, family: 'Go' }], now: 0 })
   assert.ok(a.pdf.equals(b.pdf), 'identical inputs -> identical bytes')
   assert.equal(a.pdf.subarray(0, 5).toString('latin1'), '%PDF-')
 })
@@ -117,7 +117,7 @@ test('lints are returned, not thrown', { skip: !lib }, () => {
   const result = lib.render('<p>你好世界</p>', {
     data: {},
     css: CSS,
-    fonts: [font],
+    fonts: [{ data: font, family: 'Go' }],
     now: 0,
   })
   assert.ok(result.pageCount >= 1)

@@ -43,18 +43,72 @@ export interface DocMeta {
   creationDate?: number
 }
 
+/** One font face: the program bytes plus the selection metadata the cascade
+ *  matches `font-family` / `font-weight` / italic against. */
+export interface FontFace {
+  /** The font program bytes (`.ttf`/`.otf`). */
+  data: Buffer
+  /** The CSS `font-family` name this face answers to. */
+  family: string
+  /** CSS `font-weight` (100..=900). Defaults to 400 (normal). */
+  weight?: number
+  /** Whether this is the italic/oblique face. Defaults to `false`. */
+  italic?: boolean
+}
+
+/** One named raster image: a template name plus its encoded PNG/JPEG bytes.
+ *  `<img src="name">` / `background-image: url(name)` embeds the matching
+ *  bytes as a PDF image XObject. */
+export interface NamedImage {
+  /** The name the template refers to this image by. */
+  name: string
+  /** The encoded image bytes (PNG or JPEG). */
+  data: Buffer
+}
+
+/** A page watermark stamped behind the body on every page. Either a shaped-word
+ *  text mark or a raster image mark (resolved by name through
+ *  `RenderOptions.images`); set `image` for the raster form. */
+export interface Watermark {
+  /** Word to stamp (text mark). Defaults to `DRAFT`. */
+  text?: string
+  /** Fill color `#rrggbb` (text mark). Defaults to gray. */
+  color?: string
+  /** Image name (image mark), resolved against `RenderOptions.images`. */
+  image?: string
+  /** Fill opacity `0.0..=1.0`. Defaults to 0.25 (text) / 1.0 (image). */
+  opacity?: number
+  /** Rotation in degrees (text mark). Defaults to 45. */
+  angle?: number
+  /** Tile the image mark across the page instead of centering it. */
+  tiled?: boolean
+}
+
+/** Compile-time knobs: partials, missing-value policy, and include depth. */
+export interface CompileOptions {
+  /** Partial templates by name, for `{% include %}`. */
+  partials?: Record<string, string>
+  /** `"strict"` (default) throws on a missing value; `"empty"`/`"lenient"`
+   *  renders it as empty. */
+  missingPolicy?: 'strict' | 'empty' | 'lenient'
+  /** Maximum `{% include %}` nesting depth (defaults to the core default). */
+  includeMaxDepth?: number
+}
+
 /** Options for a single render pass. All fields optional. */
 export interface RenderOptions {
   /** Data object interpolated into the template (`{{ data.* }}`). */
   data?: unknown
   /** Author CSS; also supplies `@page` geometry (size/margins). */
   css?: string
-  /** Font programs (raw OpenType/TrueType bytes), one Buffer per face. */
-  fonts?: Buffer[]
-  /** Raster images. Accepted but not yet embedded (Phase 9b). */
-  images?: Buffer[]
+  /** Font faces, each `{ data, family, weight?, italic? }`. */
+  fonts?: FontFace[]
+  /** Named raster images embedded by template name. */
+  images?: NamedImage[]
   /** PDF document metadata. */
   meta?: DocMeta
+  /** A faded watermark stamped behind the body on every page. */
+  watermark?: Watermark
   /** Pins the `now()` clock (Unix seconds) for deterministic output. */
   now?: number
 }
@@ -74,8 +128,9 @@ export interface RenderResult {
  *  parsed once instead of on every request. Omit to fall back to per-call
  *  `RenderOptions.fonts`. */
 export class Fonts {
-  /** Parse `fonts` once into a reusable handle. Do this at startup, then reuse. */
-  static load(fonts: Buffer[]): Fonts
+  /** Parse `fonts` (each `{ data, family, weight?, italic? }`) once into a
+   *  reusable handle. Do this at startup, then reuse. */
+  static load(fonts: FontFace[]): Fonts
 }
 
 /** A compiled, reusable template program (thread-safe native handle). */
@@ -90,7 +145,7 @@ export interface Program {
 }
 
 /** Compile a template into a reusable {@link Program}. Throws `TurboPdfError`. */
-export function compile(templateHtml: string, opts?: unknown): Program
+export function compile(templateHtml: string, opts?: CompileOptions): Program
 
 /** One-shot convenience: compile + render in a single call. Pass a prebuilt
  *  {@link Fonts} handle to reuse parsed fonts. */

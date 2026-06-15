@@ -6,13 +6,14 @@
 use serde::Deserialize;
 use turbo_pdf_core::style::{parse_stylesheet, AtRule, TokenSet};
 use turbo_pdf_core::{
-    build_cascade, compile as core_compile, emit_pdf, render_pages, Cascade, Diagnostics,
-    FontRegistry, RenderInputs,
+    build_cascade, compile as core_compile, emit_pdf_with_images, render_pages, Cascade,
+    Diagnostics, EmitOptions, FontRegistry, ImageResolver, NoImages, RenderInputs,
 };
 use wasm_bindgen::prelude::*;
 
 use crate::convert::{
-    build_registry, diagnostics_to_js, JsCompileOptions, JsDiagnostic, JsFont, JsMeta,
+    build_registry, diagnostics_to_js, JsCompileOptions, JsDiagnostic, JsFont, JsImage, JsMeta,
+    JsWatermark, MapResolver,
 };
 use crate::DEFAULT_NOW;
 
@@ -24,17 +25,21 @@ pub struct Program {
     inner: turbo_pdf_core::Program,
 }
 
-/// JS-side per-render input: `{ data, css?, fonts?, images?, meta?, now? }`.
+/// JS-side per-render input:
+/// `{ data, css?, fonts?, images?, meta?, watermark?, now? }`.
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 struct JsRenderArgs {
     data: serde_json::Value,
     css: String,
     fonts: Vec<JsFont>,
-    /// Raster images (`Uint8Array` each). Accepted but not yet embedded — raster
-    /// support is Phase 9b. See [`note_images`].
-    images: Vec<serde_bytes::ByteBuf>,
+    /// Named raster images, each `{ name, data: Uint8Array }`. A
+    /// `<img src="name">` / `background-image: url(name)` embeds the matching
+    /// bytes as an image XObject.
+    images: Vec<JsImage>,
     meta: JsMeta,
+    /// An optional page watermark stamped behind the body on every page.
+    watermark: Option<JsWatermark>,
     /// Render-clock override (Unix seconds). Omit for the deterministic default.
     now: Option<i64>,
 }
@@ -95,27 +100,40 @@ impl Program {
     /// Wire the core pipeline for one render: build the cascade + registry +
     /// at-rules, drive `render_pages`, then `emit_pdf`. Lints are collected and
     /// returned; a fatal render error becomes the `Err`.
-    fn run(&self, args: JsRenderArgs, registry: &FontRegistry) -> Result<RenderOutcome, JsValue> {
-        note_images(&args.images);
+    fn run(
+        &self,
+        mut args: JsRenderArgs,
+        registry: &FontRegistry,
+    ) -> Result<RenderOutcome, JsValue> {
+        let resolver = MapResolver::new(std::mem::take(&mut args.images));
         let cascade: Cascade = build_cascade(&args.css, "", TokenSet::default());
         let at_rules: Vec<AtRule> = parse_stylesheet(&args.css).at_rules;
         let now = Some(args.now.unwrap_or(DEFAULT_NOW));
+        let meta = std::mem::take(&mut args.meta);
+        let watermark = args.watermark.take().and_then(|w| {
+            let face = registry.select(&[], 400, false).cloned();
+            w.into_core(face)
+        });
+        let emit = EmitOptions {
+            watermark,
+            ..meta.into_core()
+        };
 
         let mut diags = Diagnostics::default();
-        let inputs = RenderInputs {
-            program: &self.inner,
-            data: &args.data,
-            cascade: &cascade,
-            at_rules: &at_rules,
-            fonts: registry,
-            // The boundary accepts image bytes (see `note_images`) but a
-            // name-keyed resolver is not wired through yet; no images embedded.
-            images: &turbo_pdf_core::NoImages,
-            now,
+        let pages = {
+            let inputs = RenderInputs {
+                program: &self.inner,
+                data: &args.data,
+                cascade: &cascade,
+                at_rules: &at_rules,
+                fonts: registry,
+                images: image_source(&resolver),
+                now,
+            };
+            render_pages(&inputs, &mut diags)
+                .map_err(|e| crate::convert::JsError::from(e).into_jsvalue())?
         };
-        let pages = render_pages(&inputs, &mut diags)
-            .map_err(|e| crate::convert::JsError::from(e).into_jsvalue())?;
-        let pdf = emit_pdf(&pages, &args.meta.into_core());
+        let pdf = emit_pdf_with_images(&pages, &emit, image_source(&resolver));
         Ok(RenderOutcome {
             pdf,
             diagnostics: diagnostics_to_js(&diags),
@@ -159,11 +177,14 @@ fn parse_render_args(args: JsValue) -> Result<JsRenderArgs, JsValue> {
     serde_wasm_bindgen::from_value(args).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
-/// Raster image embedding is Phase 9b: images are accepted across the boundary so
-/// the API is stable, but not yet embedded. This is the documented no-op seam.
-fn note_images(_images: &[serde_bytes::ByteBuf]) {
-    // No-op: see Phase 9b. Images are validated only as `Uint8Array` shape by
-    // the deserializer; nothing consumes them yet.
+/// The image source for layout/emit: the caller's resolver when it carries
+/// images, else the zero-image [`NoImages`] so the no-image path is identical.
+fn image_source(resolver: &MapResolver) -> &dyn ImageResolver {
+    if resolver.is_empty() {
+        &NoImages
+    } else {
+        resolver
+    }
 }
 
 /// The successful render result serialized back to JS: `{ pdf, diagnostics,

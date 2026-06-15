@@ -29,13 +29,16 @@ use serde_json::Value;
 
 use std::sync::Arc;
 
+use std::collections::HashMap;
+
 use turbo_pdf_core::style::TokenSet;
 use turbo_pdf_core::{
-    build_cascade, compile as core_compile, emit_pdf, render_pages, style::parse_stylesheet,
-    CompileOptions, Diagnostics, EmitOptions, FontRegistry, RenderInputs,
+    build_cascade, compile as core_compile, emit_pdf_with_images, render_pages,
+    style::parse_stylesheet, CompileOptions, Diagnostics, EmitOptions, FontRegistry,
+    ImageWatermark, MissingPolicy, NoImages, RenderInputs, Rgba, TextWatermark, Watermark,
 };
 
-use convert::{build_registry, diagnostics_to_js, JsDiagnostic};
+use convert::{build_registry, diagnostics_to_js, JsDiagnostic, JsFont, JsImage, MapResolver};
 
 /// Options for a single render pass. All fields are optional; omit what you do
 /// not need. `data` defaults to `null`, `css` to empty, `fonts`/`images` to empty.
@@ -46,14 +49,40 @@ pub struct RenderOptions {
     pub data: Option<Value>,
     /// Author CSS. Also feeds `@page` geometry (size/margins) via the parser.
     pub css: Option<String>,
-    /// Font programs (raw OpenType/TrueType bytes), one `Buffer` per face.
-    pub fonts: Option<Vec<Buffer>>,
-    /// Raster images. Accepted but not yet embedded (Phase 9b) — see note below.
-    pub images: Option<Vec<Buffer>>,
+    /// Font faces, each `{ data, family, weight?, italic? }`. The `family`/weight
+    /// drive CSS `font-family`/bold selection.
+    pub fonts: Option<Vec<JsFont>>,
+    /// Named raster images, each `{ name, data }`. A `<img src="name">` or
+    /// `background-image: url(name)` in the template embeds the matching bytes.
+    pub images: Option<Vec<JsImage>>,
     /// PDF document metadata written to the info dictionary.
     pub meta: Option<DocMeta>,
+    /// A faded watermark stamped behind the body on every page. Either a text
+    /// mark (`{ text?, color?, opacity?, angle? }`) or an image mark
+    /// (`{ image, opacity?, tiled? }`, resolved against `images` by name).
+    pub watermark: Option<JsWatermark>,
     /// Pins the `now()` clock (Unix seconds) for deterministic output.
     pub now: Option<i64>,
+}
+
+/// A page watermark. Set `text` for a shaped-word mark (defaulting to `DRAFT`
+/// when omitted) or `image` for a raster mark resolved by name through `images`;
+/// the two are mutually exclusive (`image` wins if both are set). All other
+/// fields are optional and take the core's `DRAFT` preset defaults.
+#[napi(object)]
+pub struct JsWatermark {
+    /// The word to stamp (text mark). Defaults to `DRAFT` when omitted.
+    pub text: Option<String>,
+    /// Fill color `#rrggbb` for the text mark. Defaults to gray.
+    pub color: Option<String>,
+    /// The image name (image mark), resolved against `RenderOptions.images`.
+    pub image: Option<String>,
+    /// Fill opacity `0.0..=1.0`. Defaults to the preset (0.25 text / 1.0 image).
+    pub opacity: Option<f64>,
+    /// Rotation in degrees for the text mark. Defaults to 45.
+    pub angle: Option<f64>,
+    /// Tile the image mark across the page instead of centering it.
+    pub tiled: Option<bool>,
 }
 
 /// PDF document-info metadata. Every field is optional and omitted when unset.
@@ -90,13 +119,12 @@ pub struct Fonts {
 
 #[napi]
 impl Fonts {
-    /// Parse `fonts` (raw OpenType/TrueType byte buffers) once into a reusable
-    /// handle. Do this at startup, then reuse it across renders.
+    /// Parse `fonts` (each `{ data, family, weight?, italic? }`) once into a
+    /// reusable handle. Do this at startup, then reuse it across renders.
     #[napi(factory)]
-    pub fn load(fonts: Vec<Buffer>) -> Fonts {
-        let blobs: Vec<Vec<u8>> = fonts.iter().map(|b| b.to_vec()).collect();
+    pub fn load(fonts: Vec<JsFont>) -> Fonts {
         Fonts {
-            inner: Arc::new(build_registry(&blobs)),
+            inner: Arc::new(build_registry(fonts)),
         }
     }
 }
@@ -139,14 +167,47 @@ impl Program {
     // Compile is cheap enough that callers re-compile from source in the interim.
 }
 
-/// Compile `template_html` into a reusable [`Program`]. `_opts` is reserved for
-/// future compile knobs (partials, missing-policy) and currently ignored; the
-/// default [`CompileOptions`] is used.
+/// Compile `template_html` into a reusable [`Program`]. `opts` is the optional
+/// `{ partials?, missingPolicy?, includeMaxDepth? }` object (mirrors the wasm
+/// binding); an unknown/omitted field falls back to the [`CompileOptions`]
+/// default.
 #[napi]
-pub fn compile(template_html: String, _opts: Option<Value>) -> napi::Result<Program> {
+pub fn compile(template_html: String, opts: Option<Value>) -> napi::Result<Program> {
     let (program, _diags) =
-        core_compile(&template_html, &CompileOptions::default()).map_err(errors::from_compile)?;
+        core_compile(&template_html, &compile_options(opts)).map_err(errors::from_compile)?;
     Ok(Program { inner: program })
+}
+
+/// The JS shape of the compile options: `{ partials?, missingPolicy?,
+/// includeMaxDepth? }`. Every field is optional and defaulted.
+#[derive(Default, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+struct JsCompileOptions {
+    partials: HashMap<String, String>,
+    missing_policy: Option<String>,
+    include_max_depth: Option<u32>,
+}
+
+/// Lower the optional JS compile-options value into core [`CompileOptions`],
+/// treating a malformed object as the default rather than erroring.
+fn compile_options(opts: Option<Value>) -> CompileOptions {
+    let js: JsCompileOptions = opts
+        .and_then(|v| serde_json::from_value(v).ok())
+        .unwrap_or_default();
+    let defaults = CompileOptions::default();
+    CompileOptions {
+        partials: js.partials,
+        missing_policy: parse_missing_policy(js.missing_policy.as_deref()),
+        include_max_depth: js.include_max_depth.unwrap_or(defaults.include_max_depth),
+    }
+}
+
+/// Map a `missingPolicy` string to the core enum; unknown/absent stays strict.
+fn parse_missing_policy(name: Option<&str>) -> MissingPolicy {
+    match name {
+        Some("empty") | Some("lenient") => MissingPolicy::Empty,
+        _ => MissingPolicy::Strict,
+    }
 }
 
 /// One-shot convenience: compile `template_html` and render it in a single call.
@@ -178,26 +239,31 @@ fn run_pipeline(
     let registry: &FontRegistry = match fonts {
         Some(handle) => &handle.inner,
         None => {
-            owned_registry = build_registry(&font_blobs(&opts.fonts));
+            owned_registry = build_registry(opts.fonts.unwrap_or_default());
             &owned_registry
         }
     };
 
-    let inputs = RenderInputs {
-        program,
-        data: &data,
-        cascade: &cascade,
-        at_rules: &at_rules,
-        fonts: registry,
-        // Image embedding (§7.4) is not yet surfaced through the Node binding; a
-        // future option will supply a resolver here. No images for now.
-        images: &turbo_pdf_core::NoImages,
-        now: opts.now,
-    };
+    // Build the name-keyed image resolver from this call's images. When empty we
+    // keep the `&NoImages` path so a no-image render stays byte-identical.
+    let resolver = MapResolver::new(opts.images.unwrap_or_default());
 
     let mut diags = Diagnostics::default();
-    let pages = render_pages(&inputs, &mut diags).map_err(errors::from_render)?;
-    let pdf = emit_pdf(&pages, &emit_options(opts.meta));
+    let emit = emit_options(opts.meta, opts.watermark, registry);
+
+    let pages = {
+        let inputs = RenderInputs {
+            program,
+            data: &data,
+            cascade: &cascade,
+            at_rules: &at_rules,
+            fonts: registry,
+            images: image_source(&resolver),
+            now: opts.now,
+        };
+        render_pages(&inputs, &mut diags).map_err(errors::from_render)?
+    };
+    let pdf = emit_pdf_with_images(&pages, &emit, image_source(&resolver));
 
     Ok(RenderResult {
         pdf: pdf.into(),
@@ -206,27 +272,79 @@ fn run_pipeline(
     })
 }
 
-/// Collect the raw bytes of each supplied font `Buffer`. Images are accepted but
-/// dropped here: raster embedding is Phase 9b (the param is wired through so the
-/// JS API is stable, but has no effect yet).
-fn font_blobs(fonts: &Option<Vec<Buffer>>) -> Vec<Vec<u8>> {
-    fonts
-        .as_ref()
-        .map(|fs| fs.iter().map(|b| b.to_vec()).collect())
-        .unwrap_or_default()
+/// The image source for layout/emit: the caller's resolver when it carries
+/// images, else the zero-image [`NoImages`] so the no-image path is identical.
+fn image_source(resolver: &MapResolver) -> &dyn turbo_pdf_core::ImageResolver {
+    if resolver.is_empty() {
+        &NoImages
+    } else {
+        resolver
+    }
 }
 
-/// Translate optional [`DocMeta`] into core [`EmitOptions`].
-fn emit_options(meta: Option<DocMeta>) -> EmitOptions {
-    match meta {
-        None => EmitOptions::default(),
-        Some(m) => EmitOptions {
-            title: m.title,
-            author: m.author,
-            subject: m.subject,
-            keywords: m.keywords,
-            creation_date: m.creation_date,
-            ..EmitOptions::default()
-        },
+/// Translate optional [`DocMeta`] + watermark into core [`EmitOptions`]. A text
+/// watermark is shaped with the registry's first face; with no face the text
+/// mark is dropped (nothing to shape with).
+fn emit_options(
+    meta: Option<DocMeta>,
+    watermark: Option<JsWatermark>,
+    registry: &FontRegistry,
+) -> EmitOptions {
+    let mut opts = EmitOptions::default();
+    if let Some(m) = meta {
+        opts.title = m.title;
+        opts.author = m.author;
+        opts.subject = m.subject;
+        opts.keywords = m.keywords;
+        opts.creation_date = m.creation_date;
     }
+    opts.watermark = watermark.and_then(|w| build_watermark(w, registry));
+    opts
+}
+
+/// Build a core [`Watermark`] from the JS shape. `image` (if set) makes a raster
+/// mark; otherwise a text mark seeded from the `DRAFT` preset of the registry's
+/// first face. Returns `None` for a text mark with no face available.
+fn build_watermark(w: JsWatermark, registry: &FontRegistry) -> Option<Watermark> {
+    if let Some(name) = w.image {
+        return Some(Watermark::Image(ImageWatermark {
+            name,
+            opacity: w.opacity.map(|o| o as f32).unwrap_or(1.0),
+            tiled: w.tiled.unwrap_or(false),
+        }));
+    }
+    let face = registry.select(&[], 400, false)?.clone();
+    let mut mark = TextWatermark::draft(face);
+    apply_text_overrides(&mut mark, w);
+    Some(Watermark::Text(Box::new(mark)))
+}
+
+/// Apply the optional JS overrides onto a preset text watermark, leaving any
+/// omitted field at its `DRAFT`-preset default.
+fn apply_text_overrides(mark: &mut TextWatermark, w: JsWatermark) {
+    if let Some(text) = w.text {
+        mark.text = text;
+    }
+    if let Some(color) = w.color.as_deref().and_then(parse_hex_color) {
+        mark.color = color;
+    }
+    if let Some(opacity) = w.opacity {
+        mark.opacity = opacity as f32;
+    }
+    if let Some(angle) = w.angle {
+        mark.angle_deg = angle as f32;
+    }
+}
+
+/// Parse a `#rrggbb` (or `rrggbb`) hex color into an opaque [`Rgba`]. Returns
+/// `None` for any malformed string, leaving the preset color in place.
+fn parse_hex_color(s: &str) -> Option<Rgba> {
+    let hex = s.strip_prefix('#').unwrap_or(s);
+    if hex.len() != 6 {
+        return None;
+    }
+    let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+    let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+    let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+    Some(Rgba::new(r, g, b, 255))
 }

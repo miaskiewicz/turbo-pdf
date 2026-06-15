@@ -1,9 +1,13 @@
 //! Pure conversions between core types and the N-API wire shapes: diagnostics,
-//! lint codes, and the font registry assembled from caller-supplied byte blobs.
+//! lint codes, the font registry assembled from caller-supplied faces, and the
+//! name-keyed image resolver assembled from caller-supplied rasters.
 
+use std::collections::HashMap;
+
+use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
-use turbo_pdf_core::{Diagnostics, FontFace, FontRegistry, Lint, LintCode};
+use turbo_pdf_core::{Diagnostics, FontFace, FontRegistry, ImageResolver, Lint, LintCode};
 
 /// A non-fatal diagnostic (lint) returned in the render result, never thrown.
 #[napi(object)]
@@ -45,32 +49,74 @@ pub fn diagnostics_to_js(diags: &Diagnostics) -> Vec<JsDiagnostic> {
     diags.lints.iter().map(lint_to_js).collect()
 }
 
-/// Build a [`FontRegistry`] from caller-supplied font byte blobs. Each blob is
-/// parsed via [`FontFace::from_bytes`]; the family/weight/style are read from the
-/// font program itself by tagging with a synthetic family derived from index, so
-/// author CSS `font-family` still selects via the registry's fallback chain.
+/// One caller-supplied font face: the raw program bytes plus the selection
+/// metadata (`family`, `weight`, `italic`) the cascade matches against. Without
+/// it every face was tagged `font0/1` and author CSS `font-family`/bold could
+/// not select a specific face.
+#[napi(object)]
+pub struct JsFont {
+    /// The font program bytes (`.ttf`/`.otf`).
+    pub data: Buffer,
+    /// The CSS `font-family` name this face answers to.
+    pub family: String,
+    /// The CSS `font-weight` (100..=900); defaults to 400 (normal) when omitted.
+    pub weight: Option<u16>,
+    /// Whether this is the italic/oblique face; defaults to `false`.
+    pub italic: Option<bool>,
+}
+
+/// One caller-supplied raster image: its template name (the `<img src>` /
+/// `background-image: url(name)` key) and its encoded PNG/JPEG bytes.
+#[napi(object)]
+pub struct JsImage {
+    /// The name the template refers to this image by.
+    pub name: String,
+    /// The encoded image bytes (PNG or JPEG).
+    pub data: Buffer,
+}
+
+/// A name-keyed [`ImageResolver`] built from caller-supplied rasters. The core
+/// layout/emit path resolves every `<img src="X">` / `background-image:url(X)`
+/// by the name `X`; this maps that name back to the bytes the caller passed.
+pub struct MapResolver(HashMap<String, Vec<u8>>);
+
+impl MapResolver {
+    /// Build the resolver from the JS image list (`{ name, data }` each).
+    pub fn new(images: Vec<JsImage>) -> MapResolver {
+        let map = images
+            .into_iter()
+            .map(|img| (img.name, img.data.to_vec()))
+            .collect();
+        MapResolver(map)
+    }
+
+    /// Whether any images were supplied. When empty the caller keeps the
+    /// zero-image `&NoImages` path so that render stays byte-identical.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl ImageResolver for MapResolver {
+    fn resolve(&self, name: &str) -> Option<&[u8]> {
+        self.0.get(name).map(Vec::as_slice)
+    }
+}
+
+/// Build a [`FontRegistry`] from caller-supplied faces. Each face is parsed via
+/// [`FontFace::from_bytes`] and tagged with its `family`/`weight`/`italic`, so
+/// author CSS `font-family`/bold selects the right face via the cascade.
 ///
 /// Unparseable blobs are skipped (the registry simply has fewer faces); the
 /// caller sees a `NotdefGlyph` lint downstream if nothing maps a needed glyph.
-pub fn build_registry(fonts: &[Vec<u8>]) -> FontRegistry {
+pub fn build_registry(fonts: Vec<JsFont>) -> FontRegistry {
     let mut reg = FontRegistry::new();
-    for (i, bytes) in fonts.iter().enumerate() {
-        register_one(&mut reg, bytes, i);
+    for font in fonts {
+        let weight = font.weight.unwrap_or(400);
+        let italic = font.italic.unwrap_or(false);
+        if let Some(face) = FontFace::from_bytes(font.data.to_vec(), font.family, weight, italic) {
+            reg.add(face);
+        }
     }
     reg
-}
-
-/// Parse and register a single font blob, ignoring blobs that fail to parse.
-fn register_one(reg: &mut FontRegistry, bytes: &[u8], index: usize) {
-    let family = font_family(bytes, index);
-    if let Some(face) = FontFace::from_bytes(bytes.to_vec(), family, 400, false) {
-        reg.add(face);
-    }
-}
-
-/// A stable family tag for a registered font. The face's intrinsic family is not
-/// exposed by the loader, so we tag by registration index; the registry falls
-/// back to the first registered face when no CSS family matches (§ text layout).
-fn font_family(_bytes: &[u8], index: usize) -> String {
-    format!("font{index}")
 }

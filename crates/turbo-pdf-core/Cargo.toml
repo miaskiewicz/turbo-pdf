@@ -38,6 +38,13 @@ print-color = []
 # enabled — the default build never compiles it. (AC: append.)
 append = ["dep:lopdf"]
 
+# Vector (SVG) image support (Phase 15b, §7.4). Off by default: the rasterizer
+# (`resvg`/`usvg`/`tiny-skia`) pulls a large transitive tree pinned for MSRV 1.82
+# and audited for determinism (no system fonts, no time, no threads). When on,
+# `image/svg+xml` bytes are rasterized into an RGBA buffer that feeds the
+# existing Phase 9b image XObject pipeline unchanged.
+svg = ["dep:resvg"]
+
 [dependencies]
 minijinja = { workspace = true }
 serde = { workspace = true }
@@ -60,6 +67,14 @@ jpeg-decoder = { version = "0.3.2", default-features = false }
 # features (chrono/jiff/time/rayon) are off — the merge needs only parse+write,
 # which keeps the extra dependency surface small.
 lopdf = { version = "0.36.0", default-features = false, optional = true }
+
+# `svg` feature only (optional). Pinned EXACT: resvg 0.45.1 is the last release on
+# MSRV 1.67.1 (0.46+ bump to edition 2024 / MSRV 1.87, which breaks our 1.82
+# gate). `default-features = false` drops `system-fonts` (the only non-deterministic
+# input: a system font lookup) plus the `text`/raster-image decoders we don't need;
+# shape/gradient/clip rendering stays fully deterministic. resvg re-exports `usvg`
+# and `tiny-skia`, so they need no separate dependency line. See src/svg.rs.
+resvg = { version = "=0.45.1", default-features = false, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

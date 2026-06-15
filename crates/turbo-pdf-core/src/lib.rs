@@ -23,6 +23,8 @@ pub mod paginate;
 pub mod perf;
 pub mod render;
 pub mod style;
+#[cfg(feature = "svg")]
+pub mod svg;
 mod template;
 pub mod text;
 

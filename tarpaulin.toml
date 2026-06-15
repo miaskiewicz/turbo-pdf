@@ -32,5 +32,12 @@ exclude-files = [
     # Covered by the `--features append` tests in tests/append.rs. Listed here
     # defensively so a stray tarpaulin cfg quirk cannot flag the gated-out module.
     "crates/turbo-pdf-core/src/append.rs",
+    # Opt-in `svg` feature (Phase 15b); off in normal builds — `resvg`/`usvg` are
+    # not even a dependency without `--features svg`, so this module is not
+    # compiled under default features and is not in the default coverage surface
+    # (the same way perf.rs / endnotes.rs are). Covered by the `--features svg`
+    # tests in tests/svg.rs. Listed here defensively so a stray tarpaulin cfg
+    # quirk cannot flag the gated-out module.
+    "crates/turbo-pdf-core/src/svg.rs",
 ]
 fail-under = 100.0

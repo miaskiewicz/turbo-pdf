@@ -14,15 +14,13 @@
 //! RGB(A) (alpha split off as an SMask); JPEG is passed through verbatim as
 //! `DCTDecode` (§7.4: "JPEG passed through where possible").
 //!
-//! SVG is out of scope here. TODO(phase15b, `feature = "svg"`): a gated arm would
-//! rasterize `image/svg+xml` via `resvg`/`usvg` into an RGBA buffer and slot a
-//! [`RasterImage`] in alongside these (the XObject path already accepts RGBA via
-//! the alpha SMask). DEFERRED in Phase 15: `resvg` pulls a large transitive tree
-//! (font-kit, tiny-skia, kurbo, …) that needs an MSRV-1.82 audit and a vendored
-//! determinism check before it can ride behind a default-off gate; doing it
-//! half-way (unpinned, unaudited) would risk the build/coverage gates this phase
-//! must keep green. The decode hook (`decode`/`probe` here) is the single
-//! integration point when it lands.
+//! SVG support rides behind the off-by-default `svg` feature (Phase 15b). When
+//! enabled, the gated arms in [`probe`]/[`decode`] (and the [`is_svg`] sniff)
+//! rasterize `image/svg+xml` via `resvg`/`usvg` into a straight-alpha RGBA buffer
+//! and slot a [`RasterImage`] in alongside the raster ones — the XObject path
+//! already embeds RGBA via the alpha `SMask`, so no new emit code is needed (see
+//! [`crate::svg`]). With the feature off, `resvg` is not a dependency and these
+//! arms are not compiled, so the default decode path is byte-for-byte unchanged.
 
 use std::io::Cursor;
 
@@ -81,6 +79,12 @@ pub struct Intrinsic {
 /// decoding pixels. Used at layout time to size the image box and apply the
 /// overflow caps.
 pub fn probe(bytes: &[u8]) -> Option<Intrinsic> {
+    // SVG has no fixed magic, so it is sniffed structurally (gated): an SVG box is
+    // sized from its rasterized intrinsic dimensions before the raster sniff runs.
+    #[cfg(feature = "svg")]
+    if crate::svg::is_svg(bytes) {
+        return crate::svg::probe_svg(bytes);
+    }
     match sniff(bytes)? {
         Format::Png => probe_png(bytes),
         Format::Jpeg => probe_jpeg(bytes),
@@ -168,6 +172,12 @@ impl RasterImage {
 /// Decode encoded bytes into an embeddable [`RasterImage`], or `None` if the
 /// format is unrecognized or the data is malformed.
 pub fn decode(bytes: &[u8]) -> Option<RasterImage> {
+    // SVG (gated): rasterize to RGBA before the raster sniff. The resulting
+    // [`RasterImage`] feeds the same XObject/SMask path as a decoded RGBA PNG.
+    #[cfg(feature = "svg")]
+    if crate::svg::is_svg(bytes) {
+        return crate::svg::decode_svg(bytes);
+    }
     match sniff(bytes)? {
         Format::Png => decode_png(bytes),
         Format::Jpeg => decode_jpeg(bytes),

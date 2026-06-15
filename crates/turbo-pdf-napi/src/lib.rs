@@ -119,35 +119,26 @@ impl JsEncryption {
     /// all-granted default.
     fn into_core(self) -> Encryption {
         let mut perms = Permissions::all();
-        if let Some(v) = self.print {
-            perms.print = v;
-        }
-        if let Some(v) = self.modify {
-            perms.modify = v;
-        }
-        if let Some(v) = self.copy {
-            perms.copy = v;
-        }
-        if let Some(v) = self.annotate {
-            perms.annotate = v;
-        }
-        if let Some(v) = self.fill_forms {
-            perms.fill_forms = v;
-        }
-        if let Some(v) = self.accessibility {
-            perms.accessibility = v;
-        }
-        if let Some(v) = self.assemble {
-            perms.assemble = v;
-        }
-        if let Some(v) = self.high_quality_print {
-            perms.high_quality_print = v;
-        }
+        apply_perm(&mut perms.print, self.print);
+        apply_perm(&mut perms.modify, self.modify);
+        apply_perm(&mut perms.copy, self.copy);
+        apply_perm(&mut perms.annotate, self.annotate);
+        apply_perm(&mut perms.fill_forms, self.fill_forms);
+        apply_perm(&mut perms.accessibility, self.accessibility);
+        apply_perm(&mut perms.assemble, self.assemble);
+        apply_perm(&mut perms.high_quality_print, self.high_quality_print);
         Encryption {
             user_password: self.user_password,
             owner_password: self.owner_password,
             permissions: perms,
         }
+    }
+}
+
+/// Apply an optional permission override onto a slot (no-op when `None`).
+fn apply_perm(slot: &mut bool, over: Option<bool>) {
+    if let Some(v) = over {
+        *slot = v;
     }
 }
 

@@ -232,40 +232,43 @@ impl Conformance {
 /// flags (`print`, `modify`, `copy`, `annotate`, `fill_forms`, `accessibility`,
 /// `assemble`, `high_quality_print`) — each a bool defaulting to granted.
 fn encryption_dict(d: &Bound<'_, PyDict>) -> PyResult<Encryption> {
-    let user_password: String = match d.get_item("user_password")? {
-        Some(v) => v.extract()?,
-        None => {
-            return Err(TurboPdfError::new_err(
-                "encryption requires a 'user_password' string",
-            ))
-        }
-    };
-    let owner_password = opt_str(d, "owner_password")?;
-    let permissions = permissions_dict(d)?;
     Ok(Encryption {
-        user_password,
-        owner_password,
-        permissions,
+        user_password: require_user_password(d)?,
+        owner_password: opt_str(d, "owner_password")?,
+        permissions: permissions_dict(d)?,
     })
+}
+
+/// Extract the required `user_password` string off the `encryption` dict.
+fn require_user_password(d: &Bound<'_, PyDict>) -> PyResult<String> {
+    match d.get_item("user_password")? {
+        Some(v) => v.extract(),
+        None => Err(TurboPdfError::new_err(
+            "encryption requires a 'user_password' string",
+        )),
+    }
 }
 
 /// Read the permission-flag keys off the `encryption` dict onto an all-granted
 /// default; an omitted flag stays granted.
 fn permissions_dict(d: &Bound<'_, PyDict>) -> PyResult<Permissions> {
-    let dflt = Permissions::all();
-    let flag = |key: &str, default: bool| -> PyResult<bool> {
-        Ok(opt_bool_key(d, key)?.unwrap_or(default))
-    };
-    Ok(Permissions {
-        print: flag("print", dflt.print)?,
-        modify: flag("modify", dflt.modify)?,
-        copy: flag("copy", dflt.copy)?,
-        annotate: flag("annotate", dflt.annotate)?,
-        fill_forms: flag("fill_forms", dflt.fill_forms)?,
-        accessibility: flag("accessibility", dflt.accessibility)?,
-        assemble: flag("assemble", dflt.assemble)?,
-        high_quality_print: flag("high_quality_print", dflt.high_quality_print)?,
-    })
+    let mut perms = Permissions::all();
+    let fields: [(&str, &mut bool); 8] = [
+        ("print", &mut perms.print),
+        ("modify", &mut perms.modify),
+        ("copy", &mut perms.copy),
+        ("annotate", &mut perms.annotate),
+        ("fill_forms", &mut perms.fill_forms),
+        ("accessibility", &mut perms.accessibility),
+        ("assemble", &mut perms.assemble),
+        ("high_quality_print", &mut perms.high_quality_print),
+    ];
+    for (key, slot) in fields {
+        if let Some(v) = opt_bool_key(d, key)? {
+            *slot = v;
+        }
+    }
+    Ok(perms)
 }
 
 /// Borrow the shared registry out of an optional warm [`Fonts`] handle.
@@ -449,6 +452,11 @@ fn register_classes(m: &Bound<'_, PyModule>) -> PyResult<()> {
 /// Register the module-level functions (`compile`, `render`, `append_pdf`).
 fn register_functions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compile, m)?)?;
+    register_render_functions(m)
+}
+
+/// Register the render/IO module functions (`render`, `append_pdf`).
+fn register_render_functions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(render, m)?)?;
     m.add_function(wrap_pyfunction!(append_pdf, m)?)
 }

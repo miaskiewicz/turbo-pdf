@@ -2,3 +2,4 @@ packages:
   - 'packages/*'
   - 'benches/*'
   - 'crates/turbo-pdf-napi'
+  - 'conformance'

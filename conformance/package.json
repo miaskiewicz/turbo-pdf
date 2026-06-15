@@ -1,0 +1,13 @@
+{
+  "name": "@turbo-pdf/conformance",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Binding conformance suite: asserts the shipped napi + wasm packages expose the engine's capabilities.",
+  "type": "module",
+  "scripts": {
+    "build:napi": "cargo build -p turbo-pdf-napi --release && node ../crates/turbo-pdf-napi/scripts/copy-addon.mjs",
+    "build:wasm": "wasm-pack build ../crates/turbo-pdf-wasm --target nodejs --out-dir pkg-node",
+    "test": "node --test conformance.test.mjs",
+    "conformance": "pnpm build:napi && pnpm build:wasm && pnpm test"
+  }
+}

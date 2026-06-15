@@ -47,3 +47,34 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm lint
       - run: pnpm format:check
+
+  conformance:
+    name: Binding conformance (napi + wasm)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Install qpdf (deep PDF --check)
+        run: sudo apt-get update && sudo apt-get install -y qpdf
+      - run: pnpm install --frozen-lockfile
+      # Build the SHIPPED packages, then assert capabilities against them.
+      - name: Build napi addon
+        run: |
+          cargo build -p turbo-pdf-napi --release
+          node crates/turbo-pdf-napi/scripts/copy-addon.mjs
+      - name: Build wasm pkg
+        run: wasm-pack build crates/turbo-pdf-wasm --target nodejs --out-dir pkg-node
+      - name: Run conformance suite
+        run: node --test conformance/conformance.test.mjs

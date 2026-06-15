@@ -27,7 +27,7 @@ mod inner {
     // Per-thread so counters are isolated across parallel tests and so a single
     // render (which runs on one thread) reads exactly its own hot-path counts.
     thread_local! {
-        static COUNTS: RefCell<BTreeMap<&'static str, u64>> = RefCell::new(BTreeMap::new());
+        static COUNTS: RefCell<BTreeMap<&'static str, u64>> = const { RefCell::new(BTreeMap::new()) };
     }
 
     fn with_counts<R>(f: impl FnOnce(&mut BTreeMap<&'static str, u64>) -> R) -> R {

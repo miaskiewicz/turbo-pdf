@@ -63,7 +63,7 @@ fn invoice_stage_timing() {
         .map(|i| serde_json::json!({"d": format!("Service {i}"), "q": i, "p": format!("{i}.00")}))
         .collect();
     let data = serde_json::json!({ "n": 4012, "rows": rows, "t": "1234.00" });
-    let time = |iters: u32, mut f: &mut dyn FnMut()| {
+    let time = |iters: u32, f: &mut dyn FnMut()| {
         let t = Instant::now();
         for _ in 0..iters {
             f();

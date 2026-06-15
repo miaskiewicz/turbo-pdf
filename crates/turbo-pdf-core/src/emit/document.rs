@@ -55,12 +55,19 @@ use super::EmitOptions;
 /// per-face `/ToUnicode` CMap stream, so each face occupies one more object
 /// (AC-11.1) — a *runtime* count, decided per render by `opts.pdf_ua`, so a
 /// flag-off render under the `pdf-ua` build keeps the default 4-object plan.
+/// Without the `pdf-ua` feature the count is the constant 4 (the `pdf_ua` flag
+/// can never be set), so the default build carries no dead `5` branch.
+#[cfg(feature = "pdf-ua")]
 fn objects_per_font(pdf_ua: bool) -> i32 {
     if pdf_ua {
         5
     } else {
         4
     }
+}
+#[cfg(not(feature = "pdf-ua"))]
+fn objects_per_font(_pdf_ua: bool) -> i32 {
+    4
 }
 
 /// Whether this render emits PDF/A-2b objects: `opts.pdf_a` under the `pdf-a`

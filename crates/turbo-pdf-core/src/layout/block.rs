@@ -150,6 +150,21 @@ fn directive_frag(node_id: NodeId, kind: TKind, x: f32, y: f32) -> Fragment {
     Fragment::new(node_id, x, y, 0.0, 0.0, FragmentContent::Directive(kind))
 }
 
+/// A directive fragment carrying a `<t:anchor name>`'s destination so emit can
+/// register it as a named GoTo target (`xref` feature, AC-3.25).
+#[cfg(feature = "xref")]
+fn anchor_directive_frag(
+    node_id: NodeId,
+    kind: TKind,
+    x: f32,
+    y: f32,
+    anchor: &Option<String>,
+) -> Fragment {
+    let mut frag = directive_frag(node_id, kind, x, y);
+    frag.xref.anchor = anchor.clone();
+    frag
+}
+
 /// Atomic inlines are stacked below the text lines (v1 simplification); inline
 /// directives become zero-size markers at the box origin.
 fn layout_atomics(
@@ -170,8 +185,17 @@ fn layout_atomics(
                 height += f.height;
                 frags.push(f);
             }
+            #[cfg(not(feature = "xref"))]
             InlineItem::Directive { node_id, kind } => {
                 frags.push(directive_frag(*node_id, *kind, cx, cy));
+            }
+            #[cfg(feature = "xref")]
+            InlineItem::Directive {
+                node_id,
+                kind,
+                anchor,
+            } => {
+                frags.push(anchor_directive_frag(*node_id, *kind, cx, cy, anchor));
             }
             InlineItem::Text { .. } => {}
         }
@@ -300,6 +324,26 @@ pub(crate) fn layout_box_sized(
         content: content_kind(lb, bs),
         break_meta: break_meta_of(bs),
         children,
+        #[cfg(feature = "xref")]
+        xref: box_xref(lb),
+    }
+}
+
+/// The cross-reference payload for a box fragment: the `#name` target of an
+/// `<a href="#name">` whose box this is, drawn from the box's HTML attributes
+/// (`xref` feature, AC-3.25).
+#[cfg(feature = "xref")]
+fn box_xref(lb: &LayoutBox) -> super::fragment::XrefMeta {
+    let link_href = lb
+        .attrs
+        .iter()
+        .find(|a| a.name == "href")
+        .and_then(|a| a.value.strip_prefix('#'))
+        .filter(|t| !t.is_empty())
+        .map(str::to_string);
+    super::fragment::XrefMeta {
+        anchor: None,
+        link_href,
     }
 }
 
@@ -401,6 +445,8 @@ fn image_fragment(
         content: FragmentContent::Image(sized.placement.clone()),
         break_meta: break_meta_of(bs),
         children: Vec::new(),
+        #[cfg(feature = "xref")]
+        xref: super::fragment::XrefMeta::default(),
     }
 }
 

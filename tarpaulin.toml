@@ -26,6 +26,7 @@ exclude-files = [
     # carry real default coverage, so it cannot be file-excluded; its gated lines
     # simply are not compiled by default and so never enter the report.)
     "crates/turbo-pdf-core/src/endnotes.rs",
+<<<<<<< HEAD
     # Opt-in `append` feature: off in normal builds — not compiled under default
     # features (its `lopdf` dep is `optional`), so its lines never enter the
     # default coverage surface, the same way `endnotes.rs` above does not.
@@ -39,5 +40,15 @@ exclude-files = [
     # tests in tests/svg.rs. Listed here defensively so a stray tarpaulin cfg
     # quirk cannot flag the gated-out module.
     "crates/turbo-pdf-core/src/svg.rs",
+    # Opt-in `xref` feature (Phase 15b, AC-3.25): internal links & cross-refs.
+    # `emit/xref.rs` is wholly behind `#[cfg(feature = "xref")]` and the module is
+    # only declared under that gate, so it is not compiled in the default build —
+    # exactly like perf.rs / endnotes.rs. A tarpaulin source-mapping quirk still
+    # flags its (uncompiled) lines, so it is excluded here; covered functionally
+    # by the `--features xref` tests in tests/xref.rs. The other `xref` gated
+    # code (in fragment.rs, boxgen.rs, block.rs, emit/document.rs) lives in files
+    # with real default coverage, so it cannot be file-excluded; its gated lines
+    # simply are not compiled by default and never enter the report.
+    "crates/turbo-pdf-core/src/emit/xref.rs",
 ]
 fail-under = 100.0

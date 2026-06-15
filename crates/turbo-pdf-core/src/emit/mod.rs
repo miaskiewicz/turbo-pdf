@@ -28,6 +28,8 @@ mod page;
 mod text;
 mod unit;
 mod watermark;
+#[cfg(feature = "xref")]
+mod xref;
 
 use crate::image::{ImageResolver, NoImages};
 use crate::paginate::Page;

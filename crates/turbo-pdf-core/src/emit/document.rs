@@ -44,6 +44,8 @@ use super::meta::write_info;
 use super::page::content_stream;
 use super::unit::px_to_pt;
 use super::watermark;
+#[cfg(feature = "xref")]
+use super::xref::Xref;
 use super::EmitOptions;
 
 /// The number of PDF objects each embedded face occupies (Type0, CIDFont,
@@ -60,7 +62,15 @@ pub fn build(pages: &[Page], opts: &EmitOptions, resolver: &dyn ImageResolver) -
     if let Some(mark) = &opts.watermark {
         watermark::collect(mark, &mut fonts, &mut images, resolver);
     }
-    let plan = Plan::new(pages, &fonts, &images);
+    #[cfg(feature = "xref")]
+    let xref = Xref::collect(pages);
+    let plan = Plan::new(
+        pages,
+        &fonts,
+        &images,
+        #[cfg(feature = "xref")]
+        &xref,
+    );
     let mut pdf = Pdf::new();
     pdf.set_version(1, 7);
     write_catalog(&mut pdf, &plan);
@@ -69,7 +79,19 @@ pub fn build(pages: &[Page], opts: &EmitOptions, resolver: &dyn ImageResolver) -
     fonts.write(&mut pdf, &mut plan.font_alloc());
     images.write(&mut pdf, &mut plan.image_alloc());
     write_info(&mut pdf, plan.info, opts);
+    #[cfg(feature = "xref")]
+    write_xref(&mut pdf, &plan, &xref);
     pdf.finish()
+}
+
+/// Write the cross-reference objects (`xref` feature): the `/Dests` dictionary
+/// (when any anchor exists) and the per-page Link annotation objects.
+#[cfg(feature = "xref")]
+fn write_xref(pdf: &mut Pdf, plan: &Plan, xref: &Xref) {
+    if xref.has_dests() {
+        xref.write_dests(pdf, plan.dests, &plan.page_refs);
+    }
+    xref.write_links(pdf, &plan.link_refs);
 }
 
 /// The fixed reference layout for one build.
@@ -87,10 +109,29 @@ struct Plan {
     /// The main XObject ref of each image, in resource order.
     image_refs: Vec<Ref>,
     info: Ref,
+    /// The `/Dests` dictionary object (`xref` feature). Meaningful only when
+    /// `has_dests` is set; the catalog references it only then.
+    #[cfg(feature = "xref")]
+    dests: Ref,
+    /// Whether the document defines any named destinations (`xref` feature).
+    #[cfg(feature = "xref")]
+    has_dests: bool,
+    /// The Link annotation objects in page/document order (`xref` feature).
+    #[cfg(feature = "xref")]
+    link_refs: Vec<Ref>,
+    /// The Link annotation refs grouped per page (`xref` feature), parallel to
+    /// the pages, so each page object can write its `/Annots` array by index.
+    #[cfg(feature = "xref")]
+    page_annot_refs: Vec<Vec<Ref>>,
 }
 
 impl Plan {
-    fn new(pages: &[Page], fonts: &FontStore, images: &ImageStore) -> Plan {
+    fn new(
+        pages: &[Page],
+        fonts: &FontStore,
+        images: &ImageStore,
+        #[cfg(feature = "xref")] xref: &Xref,
+    ) -> Plan {
         let mut next = 3;
         let page_refs = page_ref_pairs(pages.len(), &mut next);
         let fonts_start = next;
@@ -98,6 +139,14 @@ impl Plan {
         let images_start = fonts_start + OBJECTS_PER_FONT * fonts.len() as i32;
         let image_refs = images.xobject_refs(images_start);
         let info = Ref::new(images_start + images.total_objects());
+        // Cross-reference objects follow the info dict: an optional `/Dests`
+        // dictionary, then one object per Link annotation.
+        #[cfg(feature = "xref")]
+        let (dests, link_refs) = xref_refs(info.get() + 1, xref);
+        #[cfg(feature = "xref")]
+        let page_annot_refs = (0..pages.len())
+            .map(|i| xref.page_annots(i, &link_refs).to_vec())
+            .collect();
         Plan {
             catalog: Ref::new(1),
             page_tree: Ref::new(2),
@@ -107,6 +156,14 @@ impl Plan {
             images_start,
             image_refs,
             info,
+            #[cfg(feature = "xref")]
+            dests,
+            #[cfg(feature = "xref")]
+            has_dests: xref.has_dests(),
+            #[cfg(feature = "xref")]
+            link_refs,
+            #[cfg(feature = "xref")]
+            page_annot_refs,
         }
     }
 
@@ -139,8 +196,31 @@ fn type0_refs(start: i32, count: usize) -> Vec<Ref> {
         .collect()
 }
 
+/// Allocate the cross-reference object refs starting at `start` (`xref`
+/// feature): a `/Dests` dictionary first (when any anchor exists), then one ref
+/// per Link annotation. The dests ref is unused — and never referenced by the
+/// catalog — when the document defines no destinations.
+#[cfg(feature = "xref")]
+fn xref_refs(start: i32, xref: &Xref) -> (Ref, Vec<Ref>) {
+    let mut next = start;
+    let dests = Ref::new(next);
+    if xref.has_dests() {
+        next += 1;
+    }
+    let link_refs = (0..xref.link_count() as i32)
+        .map(|i| Ref::new(next + i))
+        .collect();
+    (dests, link_refs)
+}
+
 fn write_catalog(pdf: &mut Pdf, plan: &Plan) {
-    pdf.catalog(plan.catalog).pages(plan.page_tree);
+    let mut catalog = pdf.catalog(plan.catalog);
+    catalog.pages(plan.page_tree);
+    #[cfg(feature = "xref")]
+    if plan.has_dests {
+        catalog.destinations(plan.dests);
+    }
+    catalog.finish();
 }
 
 fn write_page_tree(pdf: &mut Pdf, pages: &[Page], plan: &Plan) {
@@ -159,8 +239,8 @@ fn write_pages(
     images: &ImageStore,
     opts: &EmitOptions,
 ) {
-    for (page, (page_ref, content_ref)) in pages.iter().zip(&plan.page_refs) {
-        write_page_object(pdf, page, plan, *page_ref, *content_ref, opts);
+    for (i, (page, (page_ref, content_ref))) in pages.iter().zip(&plan.page_refs).enumerate() {
+        write_page_object(pdf, page, plan, (*page_ref, *content_ref), opts, i);
         let bytes = content_stream(page, fonts, images, opts.watermark.as_ref());
         pdf.stream(*content_ref, &bytes);
     }
@@ -180,17 +260,33 @@ fn write_page_object(
     pdf: &mut Pdf,
     page: &Page,
     plan: &Plan,
-    page_ref: Ref,
-    content_ref: Ref,
+    refs: (Ref, Ref),
     opts: &EmitOptions,
+    page_idx: usize,
 ) {
+    let (page_ref, content_ref) = refs;
     let mut obj = pdf.page(page_ref);
     obj.parent(plan.page_tree);
     obj.media_box(media_box(page));
     obj.contents(content_ref);
     write_resources(&mut obj, plan, opts);
+    write_page_annots(&mut obj, plan, page_idx);
     obj.finish();
 }
+
+/// Write the page's `/Annots` array of Link annotations, when the `xref` feature
+/// is on and this page carries any internal links. A no-op otherwise, so the
+/// default page object is byte-for-byte unchanged.
+#[cfg(feature = "xref")]
+fn write_page_annots(obj: &mut pdf_writer::writers::Page, plan: &Plan, page_idx: usize) {
+    let annots = &plan.page_annot_refs[page_idx];
+    if !annots.is_empty() {
+        obj.annotations(annots.iter().copied());
+    }
+}
+
+#[cfg(not(feature = "xref"))]
+fn write_page_annots(_obj: &mut pdf_writer::writers::Page, _plan: &Plan, _page_idx: usize) {}
 
 /// Write the page's resource dictionary: fonts, image XObjects, then the
 /// watermark fade `ExtGState` when a watermark is present. The font and image

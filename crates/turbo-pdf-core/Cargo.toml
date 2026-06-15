@@ -45,6 +45,13 @@ append = ["dep:lopdf"]
 # existing Phase 9b image XObject pipeline unchanged.
 svg = ["dep:resvg"]
 
+# `<t:anchor name="x">` becomes a named GoTo destination and `<a href="#x">`
+# becomes an internal Link annotation that jumps to it (AC-3.25). Threads the
+# anchor name / link href from boxgen through the positioned fragment, then a
+# two-pass emit writes a `/Dests` name tree plus per-page Link `/Annots`. Off by
+# default: the default path carries `None` xref data at near-zero cost.
+xref = []
+
 [dependencies]
 minijinja = { workspace = true }
 serde = { workspace = true }

@@ -116,7 +116,14 @@ pub enum InlineItem {
     /// An atomic inline box (`inline-block`, or a block nested in inline flow).
     Atomic(LayoutBox),
     /// An inline paged-media directive (e.g. a footnote reference).
-    Directive { node_id: NodeId, kind: TKind },
+    Directive {
+        node_id: NodeId,
+        kind: TKind,
+        /// A `<t:anchor name>`'s destination name (`xref` feature, AC-3.25),
+        /// carried so the positioned directive fragment can define the dest.
+        #[cfg(feature = "xref")]
+        anchor: Option<String>,
+    },
 }
 
 /// A block-level box or an inline-level run, before anonymous-block wrapping.
@@ -172,13 +179,34 @@ fn directive_level(kind: TKind, el: &StyledElement, ids: &mut Ids) -> Level {
         Level::Inline(vec![InlineItem::Directive {
             node_id: ids.alloc(),
             kind,
+            #[cfg(feature = "xref")]
+            anchor: anchor_name(kind, el),
         }])
     } else {
         Level::Block(build_block_box(el, ids))
     }
 }
 
+/// The destination name of a `<t:anchor name="x">`, or `None` (`xref` feature).
+#[cfg(feature = "xref")]
+fn anchor_name(kind: TKind, el: &StyledElement) -> Option<String> {
+    if !matches!(kind, TKind::Anchor) {
+        return None;
+    }
+    attr_value(&el.attrs, "name")
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
+}
+
 fn classify_html(el: &StyledElement, ids: &mut Ids) -> Option<Level> {
+    #[cfg(feature = "xref")]
+    if internal_link_href(el).is_some() {
+        // An `<a href="#name">` is laid out as an atomic inline box so it carries
+        // its own fragment (and thus a link rectangle) through layout (AC-3.25).
+        return Some(Level::Inline(vec![InlineItem::Atomic(build_block_box(
+            el, ids,
+        ))]));
+    }
     match display_of(&el.style) {
         Display::None => None,
         Display::Inline => Some(Level::Inline(flatten_inline(el, ids))),
@@ -187,6 +215,20 @@ fn classify_html(el: &StyledElement, ids: &mut Ids) -> Option<Level> {
         ))])),
         _ => Some(Level::Block(build_block_box(el, ids))),
     }
+}
+
+/// The bare `#name` destination of an `<a href="#name">`, or `None` for any other
+/// element or a non-internal `href` (`xref` feature, AC-3.25).
+#[cfg(feature = "xref")]
+fn internal_link_href(el: &StyledElement) -> Option<String> {
+    let Tag::Html(name) = &el.tag else {
+        return None;
+    };
+    if name != "a" {
+        return None;
+    }
+    let target = attr_value(&el.attrs, "href")?.strip_prefix('#')?;
+    (!target.is_empty()).then(|| target.to_string())
 }
 
 fn classify(node: &StyledNode, parent_style: &ComputedStyle, ids: &mut Ids) -> Option<Level> {

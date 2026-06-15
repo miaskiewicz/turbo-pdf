@@ -11,7 +11,7 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use turbo_pdf_core::{CompileError, ErrorCode, RenderError, Span};
+use turbo_pdf_core::{AppendError, CompileError, ErrorCode, RenderError, Span};
 
 create_exception!(
     turbo_html2pdf,
@@ -69,4 +69,10 @@ pub fn from_compile(py: Python<'_>, e: CompileError) -> PyErr {
 /// Map a fatal render error to a typed `TurboPdfError`.
 pub fn from_render(py: Python<'_>, e: RenderError) -> PyErr {
     build(py, e.code, &e.message, e.span)
+}
+
+/// Map a PDF append/merge failure to a typed `TurboPdfError`. Append errors carry
+/// no source span, so a zeroed span is used under the generic `Render` code.
+pub fn from_append(py: Python<'_>, e: AppendError) -> PyErr {
+    build(py, ErrorCode::Render, &e.to_string(), Span::default())
 }

@@ -31,8 +31,8 @@ use serde_json::Value;
 
 use turbo_pdf_core::style::{parse_stylesheet, TokenSet};
 use turbo_pdf_core::{
-    build_cascade, compile as core_compile, emit_pdf, render_pages, CompileOptions, Diagnostics,
-    EmitOptions, FontRegistry, RenderInputs,
+    append_pdfs, build_cascade, compile as core_compile, emit_pdf, render_pages, CompileOptions,
+    Diagnostics, EmitOptions, Encryption, FontRegistry, Permissions, RenderInputs,
 };
 
 use convert::{build_registry, diagnostics_to_py};
@@ -72,7 +72,7 @@ impl Program {
     /// on a fatal compile/render fault; lints come back via [`Program::render`]'s
     /// companion — here only the PDF bytes are returned to match the N-API
     /// `program.render(...) -> bytes` shape. See [`render_full`] for diagnostics.
-    #[pyo3(signature = (data=None, css=String::new(), fonts=None, images=None, meta=None, now=None))]
+    #[pyo3(signature = (data=None, css=String::new(), fonts=None, images=None, meta=None, now=None, pdf_a=false, pdf_ua=false, lang=None, cmyk=false, encryption=None, append_pdfs=None))]
     #[allow(clippy::too_many_arguments)]
     pub fn render(
         &self,
@@ -83,15 +83,22 @@ impl Program {
         images: Option<Vec<Vec<u8>>>,
         meta: Option<Bound<'_, PyDict>>,
         now: Option<i64>,
+        pdf_a: bool,
+        pdf_ua: bool,
+        lang: Option<String>,
+        cmyk: bool,
+        encryption: Option<Bound<'_, PyDict>>,
+        append_pdfs: Option<Vec<Vec<u8>>>,
     ) -> PyResult<Py<PyBytes>> {
-        let opts = RenderArgs::new(py, data, css, fonts_handle(fonts), images, meta, now)?;
-        let out = run_pipeline(py, &self.inner, opts)?;
+        let conf = Conformance::new(pdf_a, pdf_ua, lang, cmyk, encryption)?;
+        let opts = RenderArgs::new(py, data, css, fonts_handle(fonts), images, meta, now, conf)?;
+        let out = run_pipeline(py, &self.inner, opts, append_pdfs)?;
         Ok(out.pdf)
     }
 
     /// Like [`Program::render`] but returns `(pdf_bytes, diagnostics, page_count)`
     /// so callers can inspect the non-fatal lints and page total.
-    #[pyo3(signature = (data=None, css=String::new(), fonts=None, images=None, meta=None, now=None))]
+    #[pyo3(signature = (data=None, css=String::new(), fonts=None, images=None, meta=None, now=None, pdf_a=false, pdf_ua=false, lang=None, cmyk=false, encryption=None, append_pdfs=None))]
     #[allow(clippy::too_many_arguments)]
     pub fn render_full<'py>(
         &self,
@@ -102,9 +109,16 @@ impl Program {
         images: Option<Vec<Vec<u8>>>,
         meta: Option<Bound<'py, PyDict>>,
         now: Option<i64>,
+        pdf_a: bool,
+        pdf_ua: bool,
+        lang: Option<String>,
+        cmyk: bool,
+        encryption: Option<Bound<'py, PyDict>>,
+        append_pdfs: Option<Vec<Vec<u8>>>,
     ) -> PyResult<Bound<'py, PyAny>> {
-        let opts = RenderArgs::new(py, data, css, fonts_handle(fonts), images, meta, now)?;
-        let out = run_pipeline(py, &self.inner, opts)?;
+        let conf = Conformance::new(pdf_a, pdf_ua, lang, cmyk, encryption)?;
+        let opts = RenderArgs::new(py, data, css, fonts_handle(fonts), images, meta, now, conf)?;
+        let out = run_pipeline(py, &self.inner, opts, append_pdfs)?;
         out.into_py_tuple(py)
     }
 
@@ -138,7 +152,7 @@ pub fn compile(
 /// One-shot convenience: compile `template_html` and render it in a single call,
 /// returning the PDF `bytes`.
 #[pyfunction]
-#[pyo3(signature = (template_html, data=None, css=String::new(), fonts=None, images=None, meta=None, now=None))]
+#[pyo3(signature = (template_html, data=None, css=String::new(), fonts=None, images=None, meta=None, now=None, pdf_a=false, pdf_ua=false, lang=None, cmyk=false, encryption=None, append_pdfs=None))]
 #[allow(clippy::too_many_arguments)]
 pub fn render(
     py: Python<'_>,
@@ -149,12 +163,109 @@ pub fn render(
     images: Option<Vec<Vec<u8>>>,
     meta: Option<Bound<'_, PyDict>>,
     now: Option<i64>,
+    pdf_a: bool,
+    pdf_ua: bool,
+    lang: Option<String>,
+    cmyk: bool,
+    encryption: Option<Bound<'_, PyDict>>,
+    append_pdfs: Option<Vec<Vec<u8>>>,
 ) -> PyResult<Py<PyBytes>> {
     let (program, _diags) = core_compile(template_html, &CompileOptions::default())
         .map_err(|e| errors::from_compile(py, e))?;
-    let opts = RenderArgs::new(py, data, css, fonts_handle(fonts), images, meta, now)?;
-    let out = run_pipeline(py, &program, opts)?;
+    let conf = Conformance::new(pdf_a, pdf_ua, lang, cmyk, encryption)?;
+    let opts = RenderArgs::new(py, data, css, fonts_handle(fonts), images, meta, now, conf)?;
+    let out = run_pipeline(py, &program, opts, append_pdfs)?;
     Ok(out.pdf)
+}
+
+/// Glue one or more foreign PDF documents after `base`, page by page, returning
+/// the merged PDF as `bytes`. Equivalent to the `append_pdfs=` render kwarg but
+/// usable on already-emitted bytes. Raises `TurboPdfError` if any input fails to
+/// parse or the inputs together contain no pages.
+#[pyfunction]
+pub fn append_pdf(py: Python<'_>, base: Vec<u8>, extras: Vec<Vec<u8>>) -> PyResult<Py<PyBytes>> {
+    let merged = merge_appended(base, &extras).map_err(|e| errors::from_append(py, e))?;
+    Ok(PyBytes::new(py, &merged).unbind())
+}
+
+/// The per-render conformance / encryption toggles lowered to core types.
+#[derive(Default)]
+struct Conformance {
+    pdf_a: bool,
+    pdf_ua: bool,
+    lang: Option<String>,
+    cmyk: bool,
+    encryption: Option<Encryption>,
+}
+
+impl Conformance {
+    /// Parse the conformance kwargs, lowering the optional `encryption` dict into
+    /// the core [`Encryption`] type.
+    fn new(
+        pdf_a: bool,
+        pdf_ua: bool,
+        lang: Option<String>,
+        cmyk: bool,
+        encryption: Option<Bound<'_, PyDict>>,
+    ) -> PyResult<Conformance> {
+        Ok(Conformance {
+            pdf_a,
+            pdf_ua,
+            lang,
+            cmyk,
+            encryption: encryption.map(|d| encryption_dict(&d)).transpose()?,
+        })
+    }
+
+    /// Apply the toggles onto an [`EmitOptions`] already carrying metadata.
+    fn apply(self, opts: &mut EmitOptions) {
+        opts.cmyk = self.cmyk;
+        opts.pdf_a = self.pdf_a;
+        opts.pdf_ua = self.pdf_ua;
+        opts.lang = self.lang;
+        opts.encryption = self.encryption;
+    }
+}
+
+/// Lower an `encryption=` dict into the core [`Encryption`]. Recognized keys:
+/// `user_password` (str, required), `owner_password` (str) and the permission
+/// flags (`print`, `modify`, `copy`, `annotate`, `fill_forms`, `accessibility`,
+/// `assemble`, `high_quality_print`) — each a bool defaulting to granted.
+fn encryption_dict(d: &Bound<'_, PyDict>) -> PyResult<Encryption> {
+    let user_password: String = match d.get_item("user_password")? {
+        Some(v) => v.extract()?,
+        None => {
+            return Err(TurboPdfError::new_err(
+                "encryption requires a 'user_password' string",
+            ))
+        }
+    };
+    let owner_password = opt_str(d, "owner_password")?;
+    let permissions = permissions_dict(d)?;
+    Ok(Encryption {
+        user_password,
+        owner_password,
+        permissions,
+    })
+}
+
+/// Read the permission-flag keys off the `encryption` dict onto an all-granted
+/// default; an omitted flag stays granted.
+fn permissions_dict(d: &Bound<'_, PyDict>) -> PyResult<Permissions> {
+    let dflt = Permissions::all();
+    let flag = |key: &str, default: bool| -> PyResult<bool> {
+        Ok(opt_bool_key(d, key)?.unwrap_or(default))
+    };
+    Ok(Permissions {
+        print: flag("print", dflt.print)?,
+        modify: flag("modify", dflt.modify)?,
+        copy: flag("copy", dflt.copy)?,
+        annotate: flag("annotate", dflt.annotate)?,
+        fill_forms: flag("fill_forms", dflt.fill_forms)?,
+        accessibility: flag("accessibility", dflt.accessibility)?,
+        assemble: flag("assemble", dflt.assemble)?,
+        high_quality_print: flag("high_quality_print", dflt.high_quality_print)?,
+    })
 }
 
 /// Borrow the shared registry out of an optional warm [`Fonts`] handle.
@@ -174,7 +285,8 @@ struct RenderArgs {
 
 impl RenderArgs {
     /// Marshal raw Python inputs into native render arguments. `images` is
-    /// accepted for API parity but not yet embedded (see [`run_pipeline`]).
+    /// accepted for API parity but not yet embedded (see [`run_pipeline`]). The
+    /// conformance/encryption toggles are applied onto the emitter options here.
     #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
@@ -184,13 +296,16 @@ impl RenderArgs {
         images: Option<Vec<Vec<u8>>>,
         meta: Option<Bound<'_, PyDict>>,
         now: Option<i64>,
+        conformance: Conformance,
     ) -> PyResult<RenderArgs> {
         let _ = images;
+        let mut emit = emit_options(py, meta)?;
+        conformance.apply(&mut emit);
         Ok(RenderArgs {
             data: data_value(data)?,
             css,
             registry: warm.unwrap_or_else(|| Arc::new(build_registry(&[]))),
-            meta: emit_options(py, meta)?,
+            meta: emit,
             now,
         })
     }
@@ -227,6 +342,7 @@ fn run_pipeline(
     py: Python<'_>,
     program: &turbo_pdf_core::Program,
     opts: RenderArgs,
+    append: Option<Vec<Vec<u8>>>,
 ) -> PyResult<RenderOutput> {
     let cascade = build_cascade(&opts.css, "", TokenSet::default());
     let at_rules = parse_stylesheet(&opts.css).at_rules;
@@ -244,9 +360,12 @@ fn run_pipeline(
 
     let mut diags = Diagnostics::default();
     let pages = render_pages(&inputs, &mut diags).map_err(|e| errors::from_render(py, e))?;
+    let page_count = pages.len();
     let pdf = emit_pdf(&pages, &opts.meta);
+    let pdf =
+        merge_appended(pdf, &append.unwrap_or_default()).map_err(|e| errors::from_append(py, e))?;
     Ok(RenderOutput {
-        page_count: pages.len(),
+        page_count,
         pdf: PyBytes::new(py, &pdf).unbind(),
         diagnostics: diags,
     })
@@ -300,16 +419,38 @@ fn opt_i64(m: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<i64>> {
     }
 }
 
+/// Extract an optional `bool` value for `key` from a dict.
+fn opt_bool_key(m: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<bool>> {
+    match m.get_item(key)? {
+        Some(v) => Ok(Some(v.extract()?)),
+        None => Ok(None),
+    }
+}
+
+/// Glue each foreign PDF blob after `base`, page by page. A parse failure becomes
+/// an [`turbo_pdf_core::AppendError`]; with no extras `base` is returned as-is.
+fn merge_appended(
+    base: Vec<u8>,
+    extras: &[Vec<u8>],
+) -> Result<Vec<u8>, turbo_pdf_core::AppendError> {
+    if extras.is_empty() {
+        return Ok(base);
+    }
+    let refs: Vec<&[u8]> = extras.iter().map(Vec::as_slice).collect();
+    append_pdfs(&base, &refs)
+}
+
 /// Register the binding's classes (`Program`, `Fonts`) on the module.
 fn register_classes(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Program>()?;
     m.add_class::<Fonts>()
 }
 
-/// Register the module-level functions (`compile`, `render`).
+/// Register the module-level functions (`compile`, `render`, `append_pdf`).
 fn register_functions(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(compile, m)?)?;
-    m.add_function(wrap_pyfunction!(render, m)?)
+    m.add_function(wrap_pyfunction!(render, m)?)?;
+    m.add_function(wrap_pyfunction!(append_pdf, m)?)
 }
 
 /// The Python extension module `turbo_html2pdf._turbo_html2pdf`. Re-exported by

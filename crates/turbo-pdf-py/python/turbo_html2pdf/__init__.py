@@ -21,8 +21,9 @@ from ._turbo_html2pdf import (  # noqa: F401
     Fonts,
     Program,
     TurboPdfError,
+    append_pdf,
     compile,
     render,
 )
 
-__all__ = ["Fonts", "Program", "TurboPdfError", "compile", "render"]
+__all__ = ["Fonts", "Program", "TurboPdfError", "append_pdf", "compile", "render"]

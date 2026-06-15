@@ -195,9 +195,21 @@ fs.writeFileSync('out.pdf', pdf)   // %PDF-1.7
 - Raster images (PNG/JPEG, alpha → SMask) with a sane max-size clamp.
 - Watermarks: out-of-the-box faded diagonal **DRAFT** text (word/colour/angle
   configurable) and background-image watermarks.
-- Optional, off-by-default capability gates: `endnotes`, `print-color` (CMYK).
-  Planned: `xref`, `svg`, `pdf-a`, `pdf-ua` — see [`TODO/`](TODO/).
 - Deterministic output; `Send + Sync`; no network / no system fonts.
+
+### Optional capabilities (Cargo feature gates)
+
+Off by default — the base build stays small and the default path is unchanged.
+Enable per build (`--features <name>`), or via `features = [...]` on the crate.
+
+| Feature | What it adds |
+|---|---|
+| `xref` | **Internal links & cross-references** — `<t:anchor name>` named destinations + clickable `<a href="#name">` GoTo links inside the PDF. |
+| `svg` | **Vector images** — `<img>`/`background-image` SVG, rasterized via `resvg` into the image pipeline (sharp at any zoom). |
+| `pdf-a` | **PDF/A-2b** archival conformance — embedded sRGB ICC OutputIntent, XMP packet, no transparency. Validates green under **veraPDF** `--flavour 2b`. |
+| `pdf-ua` | **Tagged / accessible PDF** — a `StructTreeRoot` with marked content (BDC/EMC), reading order, `<img alt>` text, artifacts — for screen readers. |
+| `endnotes` | `<t:endnote>` collects a note; `<t:endnotes/>` renders the collected list. |
+| `print-color` | **CMYK** color (`cmyk(...)`) and DeviceCMYK output for real-press workflows (vs. screen RGB). |
 
 ## Status
 

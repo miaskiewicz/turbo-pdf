@@ -75,6 +75,19 @@ jobs:
           cargo build -p turbo-pdf-napi --release
           node crates/turbo-pdf-napi/scripts/copy-addon.mjs
       - name: Build wasm pkg
+        # encrypt/append pull getrandom 0.3 on wasm32 → needs the Web-Crypto backend.
+        env:
+          RUSTFLAGS: '-D warnings --cfg getrandom_backend="wasm_js"'
         run: wasm-pack build crates/turbo-pdf-wasm --target nodejs --out-dir pkg-node
-      - name: Run conformance suite
-        run: node --test conformance/conformance.test.mjs
+      # Per-binding conformance: assert the v0.1.1 capability surface (images,
+      # watermark, pdfA/pdfUa/cmyk, encryption + qpdf round-trip, append) against
+      # the BUILT packages, so a binding that drops a capability fails CI.
+      - name: napi conformance + e2e
+        run: node --test crates/turbo-pdf-napi/__test__/*.test.mjs
+      - name: wasm conformance
+        run: node --test crates/turbo-pdf-wasm/__test__/conformance.test.mjs
+      - name: Build + test python binding
+        run: |
+          python3 -m pip install --upgrade pip maturin pytest
+          maturin develop --manifest-path crates/turbo-pdf-py/Cargo.toml
+          python3 -m pytest crates/turbo-pdf-py/tests -q

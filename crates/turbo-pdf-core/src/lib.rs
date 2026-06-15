@@ -9,6 +9,8 @@
 
 #![forbid(unsafe_code)]
 
+#[cfg(feature = "append")]
+pub mod append;
 pub mod emit;
 #[cfg(feature = "endnotes")]
 pub mod endnotes;
@@ -24,6 +26,8 @@ pub mod style;
 mod template;
 pub mod text;
 
+#[cfg(feature = "append")]
+pub use append::{append_pdfs, AppendError};
 pub use emit::{
     emit_pdf, emit_pdf_with_images, EmitOptions, ImageWatermark, TextWatermark, Watermark,
     SENTINEL_DATE,

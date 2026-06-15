@@ -32,6 +32,12 @@ endnotes = []
 # workflows (AC-7.x print colour).
 print-color = []
 
+# Append/merge external PDF pages after turbo's rendered pages. A pure post-emit
+# step that glues a foreign certified PDF (e.g. Mexican CFDI / Portuguese DSNE)
+# onto the end of an `emit_pdf` result. Pulls `lopdf` (read+write) only when
+# enabled — the default build never compiles it. (AC: append.)
+append = ["dep:lopdf"]
+
 [dependencies]
 minijinja = { workspace = true }
 serde = { workspace = true }
@@ -48,6 +54,12 @@ pdf-writer = "0.15.0"
 subsetter = "0.2.6"
 png = "0.18.1"
 jpeg-decoder = { version = "0.3.2", default-features = false }
+
+# `append` feature only (off by default). Read+write+merge for the post-emit PDF
+# glue step; `pdf-writer` is write-only and cannot parse a foreign PDF. Default
+# features (chrono/jiff/time/rayon) are off — the merge needs only parse+write,
+# which keeps the extra dependency surface small.
+lopdf = { version = "0.36.0", default-features = false, optional = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }

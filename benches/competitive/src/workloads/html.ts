@@ -19,10 +19,11 @@ function fontFace(): string {
   ].join("");
 }
 
-function css(w: Workload): string {
+/** Layout CSS WITHOUT the `@font-face` data-URIs — for engines that take fonts as
+ *  bytes through their API (turbo-html2pdf) rather than embedding them via CSS. */
+export function layoutCss(w: Workload): string {
   const mm = (w.geometry.marginPt / 2.834645669).toFixed(2);
   return [
-    fontFace(),
     `@page{size:${w.geometry.size};margin:${mm}mm;}`,
     `*{box-sizing:border-box;}`,
     `body{font-family:'${FONT_FAMILY}',sans-serif;font-size:10pt;color:#111;margin:0;}`,
@@ -35,6 +36,10 @@ function css(w: Workload): string {
     `p{margin:0 0 8pt;line-height:1.4;}`,
     `.fn{font-size:7.5pt;color:#444;border-top:0.5pt solid #999;margin-top:12pt;padding-top:6pt;}`,
   ].join("");
+}
+
+function css(w: Workload): string {
+  return fontFace() + layoutCss(w);
 }
 
 function rowHtml(r: RowData): string {
@@ -61,15 +66,23 @@ function proseHtml(w: Workload): string {
   return paras + notes;
 }
 
+/** Just the body content (no `<html>`/`<head>`/`<style>`) — for engines that take
+ *  CSS separately (turbo-html2pdf). */
+export function bodyHtml(w: Workload): string {
+  return [
+    `<h1>${w.content.title}</h1>`,
+    `<div class="sub">${w.content.subtitle}</div>`,
+    tableHtml(w),
+    proseHtml(w),
+  ].join("");
+}
+
 /** Full standalone HTML document for a workload. */
 export function renderHtml(w: Workload): string {
   return [
     "<!doctype html><html><head><meta charset='utf-8'>",
     `<style>${css(w)}</style></head><body>`,
-    `<h1>${w.content.title}</h1>`,
-    `<div class="sub">${w.content.subtitle}</div>`,
-    tableHtml(w),
-    proseHtml(w),
+    bodyHtml(w),
     "</body></html>",
   ].join("");
 }

@@ -123,7 +123,7 @@ const compile = guard((templateHtml, opts) => {
   return program
 })
 
-const render = guard((templateHtml, opts) => native.render(templateHtml, opts))
+const render = guard((templateHtml, opts, fonts) => native.render(templateHtml, opts, fonts))
 
-module.exports = { compile, render, TurboPdfError }
+module.exports = { compile, render, Fonts: native.Fonts, TurboPdfError }
 module.exports.default = module.exports

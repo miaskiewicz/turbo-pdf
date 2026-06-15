@@ -69,10 +69,20 @@ export interface RenderResult {
   pageCount: number
 }
 
+/** A reusable, pre-parsed set of fonts. Build it ONCE — e.g. warm it at server
+ *  startup — and pass the handle to every `render` call so the font programs are
+ *  parsed once instead of on every request. Omit to fall back to per-call
+ *  `RenderOptions.fonts`. */
+export class Fonts {
+  /** Parse `fonts` once into a reusable handle. Do this at startup, then reuse. */
+  static load(fonts: Buffer[]): Fonts
+}
+
 /** A compiled, reusable template program (thread-safe native handle). */
 export interface Program {
-  /** Render this program against `opts`. Throws `TurboPdfError` on a fatal fault. */
-  render(opts?: RenderOptions): RenderResult
+  /** Render this program. Pass a prebuilt {@link Fonts} handle to reuse parsed
+   *  fonts across calls. Throws `TurboPdfError` on a fatal fault. */
+  render(opts?: RenderOptions, fonts?: Fonts): RenderResult
   /** Whether the source declared a `<t:running-header>`. */
   hasHeader(): boolean
   /** Whether the source declared a `<t:running-footer>`. */
@@ -82,5 +92,6 @@ export interface Program {
 /** Compile a template into a reusable {@link Program}. Throws `TurboPdfError`. */
 export function compile(templateHtml: string, opts?: unknown): Program
 
-/** One-shot convenience: compile + render in a single call. */
-export function render(templateHtml: string, opts?: RenderOptions): RenderResult
+/** One-shot convenience: compile + render in a single call. Pass a prebuilt
+ *  {@link Fonts} handle to reuse parsed fonts. */
+export function render(templateHtml: string, opts?: RenderOptions, fonts?: Fonts): RenderResult

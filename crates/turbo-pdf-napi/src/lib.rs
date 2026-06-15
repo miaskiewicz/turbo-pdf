@@ -27,10 +27,12 @@ use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 use serde_json::Value;
 
+use std::sync::Arc;
+
 use turbo_pdf_core::style::TokenSet;
 use turbo_pdf_core::{
     build_cascade, compile as core_compile, emit_pdf, render_pages, style::parse_stylesheet,
-    CompileOptions, Diagnostics, EmitOptions, RenderInputs,
+    CompileOptions, Diagnostics, EmitOptions, FontRegistry, RenderInputs,
 };
 
 use convert::{build_registry, diagnostics_to_js, JsDiagnostic};
@@ -77,6 +79,28 @@ pub struct RenderResult {
     pub page_count: u32,
 }
 
+/// A reusable, pre-parsed set of fonts. Build it ONCE (e.g. warm it at server
+/// startup) with [`Fonts::load`] and pass the handle to every `render` call:
+/// the registry is shared (cheap `Arc` clone), so font programs are parsed once
+/// instead of on every request. Omit it to fall back to per-call `opts.fonts`.
+#[napi]
+pub struct Fonts {
+    inner: Arc<FontRegistry>,
+}
+
+#[napi]
+impl Fonts {
+    /// Parse `fonts` (raw OpenType/TrueType byte buffers) once into a reusable
+    /// handle. Do this at startup, then reuse it across renders.
+    #[napi(factory)]
+    pub fn load(fonts: Vec<Buffer>) -> Fonts {
+        let blobs: Vec<Vec<u8>> = fonts.iter().map(|b| b.to_vec()).collect();
+        Fonts {
+            inner: Arc::new(build_registry(&blobs)),
+        }
+    }
+}
+
 /// A compiled, reusable template program. Compiling is the expensive parse step;
 /// render it against many data sets. The handle is thread-safe.
 #[napi]
@@ -89,8 +113,12 @@ impl Program {
     /// Render this program against `opts` to a PDF. Throws `TurboPdfError` on a
     /// fatal compile/render fault; lints come back in `result.diagnostics`.
     #[napi]
-    pub fn render(&self, opts: Option<RenderOptions>) -> napi::Result<RenderResult> {
-        run_pipeline(&self.inner, opts.unwrap_or_default())
+    pub fn render(
+        &self,
+        opts: Option<RenderOptions>,
+        fonts: Option<&Fonts>,
+    ) -> napi::Result<RenderResult> {
+        run_pipeline(&self.inner, opts.unwrap_or_default(), fonts)
     }
 
     /// Whether the source declared a `<t:running-header>`.
@@ -126,10 +154,11 @@ pub fn compile(template_html: String, _opts: Option<Value>) -> napi::Result<Prog
 pub fn render_oneshot(
     template_html: String,
     opts: Option<RenderOptions>,
+    fonts: Option<&Fonts>,
 ) -> napi::Result<RenderResult> {
     let (program, _diags) =
         core_compile(&template_html, &CompileOptions::default()).map_err(errors::from_compile)?;
-    run_pipeline(&program, opts.unwrap_or_default())
+    run_pipeline(&program, opts.unwrap_or_default(), fonts)
 }
 
 /// The shared render pipeline: cascade + geometry + fonts -> `render_pages` ->
@@ -137,19 +166,29 @@ pub fn render_oneshot(
 fn run_pipeline(
     program: &turbo_pdf_core::Program,
     opts: RenderOptions,
+    fonts: Option<&Fonts>,
 ) -> napi::Result<RenderResult> {
     let css = opts.css.unwrap_or_default();
     let data = opts.data.unwrap_or(Value::Null);
     let cascade = build_cascade(&css, "", TokenSet::default());
     let at_rules = parse_stylesheet(&css).at_rules;
-    let fonts = build_registry(&font_blobs(&opts.fonts));
+    // Reuse the prebuilt handle when given; otherwise build a one-off registry
+    // from this call's `opts.fonts` (back-compat).
+    let owned_registry;
+    let registry: &FontRegistry = match fonts {
+        Some(handle) => &handle.inner,
+        None => {
+            owned_registry = build_registry(&font_blobs(&opts.fonts));
+            &owned_registry
+        }
+    };
 
     let inputs = RenderInputs {
         program,
         data: &data,
         cascade: &cascade,
         at_rules: &at_rules,
-        fonts: &fonts,
+        fonts: registry,
         now: opts.now,
     };
 

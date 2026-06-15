@@ -67,9 +67,17 @@ impl Program {
     /// Diagnostics (lints) are returned in the result, not thrown; only a fatal
     /// render error rejects with `{ code, message, span }`.
     pub fn render(&self, args: JsValue) -> Result<JsValue, JsValue> {
+        let mut args = parse_render_args(args)?;
+        let registry = build_registry(std::mem::take(&mut args.fonts));
+        serialize_outcome(self.run(args, &registry)?)
+    }
+
+    /// Render reusing a prebuilt [`Fonts`] handle (parse fonts once at startup,
+    /// reuse across renders). `args.fonts` is ignored when a handle is given.
+    #[wasm_bindgen(js_name = renderWithFonts)]
+    pub fn render_with_fonts(&self, args: JsValue, fonts: &Fonts) -> Result<JsValue, JsValue> {
         let args = parse_render_args(args)?;
-        let outcome = self.run(args)?;
-        serde_wasm_bindgen::to_value(&outcome).map_err(|e| JsValue::from_str(&e.to_string()))
+        serialize_outcome(self.run(args, &fonts.inner)?)
     }
 
     /// Whether the source carried a `<t:running-header>`.
@@ -87,11 +95,10 @@ impl Program {
     /// Wire the core pipeline for one render: build the cascade + registry +
     /// at-rules, drive `render_pages`, then `emit_pdf`. Lints are collected and
     /// returned; a fatal render error becomes the `Err`.
-    fn run(&self, args: JsRenderArgs) -> Result<RenderOutcome, JsValue> {
+    fn run(&self, args: JsRenderArgs, registry: &FontRegistry) -> Result<RenderOutcome, JsValue> {
         note_images(&args.images);
         let cascade: Cascade = build_cascade(&args.css, "", TokenSet::default());
         let at_rules: Vec<AtRule> = parse_stylesheet(&args.css).at_rules;
-        let registry: FontRegistry = build_registry(args.fonts);
         let now = Some(args.now.unwrap_or(DEFAULT_NOW));
 
         let mut diags = Diagnostics::default();
@@ -100,7 +107,7 @@ impl Program {
             data: &args.data,
             cascade: &cascade,
             at_rules: &at_rules,
-            fonts: &registry,
+            fonts: registry,
             now,
         };
         let pages = render_pages(&inputs, &mut diags)
@@ -112,6 +119,33 @@ impl Program {
             page_count: pages.len(),
         })
     }
+}
+
+/// A reusable, pre-parsed set of fonts. Build it ONCE (e.g. warm it at startup)
+/// with [`Fonts::load`] and pass it to [`Program::render_with_fonts`] so font
+/// programs are parsed once instead of on every render.
+#[wasm_bindgen]
+pub struct Fonts {
+    inner: FontRegistry,
+}
+
+#[wasm_bindgen]
+impl Fonts {
+    /// Parse `fonts` (an array of `{ data: Uint8Array, family?, weight?, italic? }`)
+    /// once into a reusable handle.
+    #[wasm_bindgen(js_name = load)]
+    pub fn load(fonts: JsValue) -> Result<Fonts, JsValue> {
+        let faces: Vec<JsFont> =
+            serde_wasm_bindgen::from_value(fonts).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(Fonts {
+            inner: build_registry(faces),
+        })
+    }
+}
+
+/// Serialize a render outcome back to a JS `{ pdf, diagnostics, pageCount }`.
+fn serialize_outcome(outcome: RenderOutcome) -> Result<JsValue, JsValue> {
+    serde_wasm_bindgen::to_value(&outcome).map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /// Deserialize the render argument, treating `undefined`/`null` as empty inputs.

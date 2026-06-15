@@ -1,6 +1,6 @@
 [package]
 name = "turbo-pdf-wasm"
-description = "WASM/wasm-bindgen binding for the turbo-pdf engine: template -> PDF in the browser"
+description = "HTML/CSS + Jinja templating to PDF in the browser via WebAssembly — no server, no Chromium."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

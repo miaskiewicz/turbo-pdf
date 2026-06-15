@@ -1,7 +1,7 @@
 {
   "name": "turbo-html2pdf-react",
   "version": "0.1.0",
-  "description": "React authoring frontend for turbo-pdf: components that compile once to a Jinja + t: template source string.",
+  "description": "Author turbo-html2pdf PDF templates as React components — HTML/CSS + Jinja to PDF.",
   "license": "MIT",
   "type": "module",
   "publishConfig": {

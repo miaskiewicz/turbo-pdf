@@ -1,7 +1,7 @@
 {
   "name": "turbo-html2pdf",
   "version": "0.1.0",
-  "description": "N-API binding for turbo-pdf: compile a template + data to a PDF Buffer from Node/JS (Phase 10).",
+  "description": "Fast native HTML/CSS + Jinja templating to PDF for Node — no headless browser, no Chromium.",
   "license": "MIT",
   "main": "index.js",
   "types": "index.d.ts",

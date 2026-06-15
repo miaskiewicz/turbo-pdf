@@ -9,7 +9,7 @@ charts, icons that stay crisp at any zoom). Today only raster PNG/JPEG works
 
 ## Why deferred
 `resvg`/`usvg` (the rasterizer) pulls a **large transitive dependency tree** that
-needs an MSRV-1.82 + determinism audit before adding it — shipping it unpinned
+needs an MSRV-1.88 + determinism audit before adding it — shipping it unpinned
 would risk the build/coverage/determinism gates.
 
 ## Where to start
@@ -21,7 +21,7 @@ would risk the build/coverage/determinism gates.
 
 ## What's needed
 1. Add `resvg`/`usvg` (+ `tiny-skia`) as `optional = true` deps tied to
-   `svg = ["dep:resvg", ...]`. Pin exact versions; audit the tree for MSRV 1.82
+   `svg = ["dep:resvg", ...]`. Pin exact versions; audit the tree for MSRV 1.88
    and for any non-determinism (fonts, time, threads).
 2. Behind `#[cfg(feature = "svg")]`: detect `image/svg+xml` bytes, rasterize via
    `resvg` at a chosen target DPI into RGBA, then hand off to the existing

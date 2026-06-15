@@ -48,8 +48,9 @@ print-color = []
 append = ["dep:lopdf"]
 
 # Vector (SVG) image support (Phase 15b, §7.4). Off by default: the rasterizer
-# (`resvg`/`usvg`/`tiny-skia`) pulls a large transitive tree pinned for MSRV 1.82
-# and audited for determinism (no system fonts, no time, no threads). When on,
+# (`resvg`/`usvg`/`tiny-skia`) pulls a large transitive tree pinned for a stable
+# MSRV (well under the workspace's 1.88 floor) and audited for determinism (no
+# system fonts, no time, no threads). When on,
 # `image/svg+xml` bytes are rasterized into an RGBA buffer that feeds the
 # existing Phase 9b image XObject pipeline unchanged.
 svg = ["dep:resvg"]
@@ -107,9 +108,10 @@ jpeg-decoder = { version = "0.3.2", default-features = false }
 # which keeps the extra dependency surface small.
 lopdf = { version = "0.36.0", default-features = false, optional = true }
 
-# `svg` feature only (optional). Pinned EXACT: resvg 0.45.1 is the last release on
-# MSRV 1.67.1 (0.46+ bump to edition 2024 / MSRV 1.87, which breaks our 1.82
-# gate). `default-features = false` drops `system-fonts` (the only non-deterministic
+# `svg` feature only (optional). Pinned EXACT for reproducible rendering output:
+# resvg 0.45.1 (0.46+ moves to edition 2024 and changes raster output). It builds
+# comfortably under the workspace's 1.88 floor. `default-features = false` drops
+# `system-fonts` (the only non-deterministic
 # input: a system font lookup) plus the `text`/raster-image decoders we don't need;
 # shape/gradient/clip rendering stays fully deterministic. resvg re-exports `usvg`
 # and `tiny-skia`, so they need no separate dependency line. See src/svg.rs.
@@ -117,7 +119,7 @@ resvg = { version = "=0.45.1", default-features = false, optional = true }
 
 # --- `encrypt` feature crypto deps (optional; only compiled with `--features
 # encrypt`). Pinned to the RustCrypto 0.8/0.10-era + getrandom 0.2, which build
-# on the repo's MSRV (1.82). `aes` = AES-256 block cipher, `cbc` = CBC mode (with
+# on the repo's MSRV (1.88). `aes` = AES-256 block cipher, `cbc` = CBC mode (with
 # IV), `sha2` = the SHA-256/384/512 used by the Algorithm 2.B hardened hash,
 # `getrandom` = the OS CSPRNG for salts/IVs.
 aes = { version = "0.8", optional = true }

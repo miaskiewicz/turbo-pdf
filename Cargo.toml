@@ -13,7 +13,10 @@ edition = "2021"
 license = "MIT"
 repository = "https://github.com/miaskiewicz/turbo-html2pdf"
 authors = ["turbo-pdf contributors"]
-rust-version = "1.82"
+# Real workspace floor: the default `cargo build --workspace` is dominated by
+# `napi-build` (rust-version 1.88); the core engine's font-subset stack
+# (`subsetter`/`skrifa`/`write-fonts`) needs 1.85. So 1.88 is the true MSRV.
+rust-version = "1.88"
 
 [workspace.dependencies]
 minijinja = { version = "2", features = ["loader", "macros", "custom_syntax", "preserve_order"] }

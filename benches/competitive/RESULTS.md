@@ -10,75 +10,75 @@
 - CPU: Apple M3 — 8 logical cores
 - Memory: 16.0 GiB
 - Node: v24.0.0
-- Runs/warmup: 3 measured, 1 warmup
+- Runs/warmup: 10 measured, 2 warmup
 - PNG equivalence reference engine: pdfkit
 
 ## Engines
 
 | Engine | Kind | Available | Version | Ships browser | Footprint notes |
 |---|---|---|---|---|---|
-| turbo-pdf | wip | no (pending Phase 10 napi (@turbo-html2pdf/core not built yet)) | — | no | native N-API addon (~few MB), no browser — measured after Phase 10 |
+| turbo-html2pdf | typesetting | yes | 0.1.0 | no | native N-API addon (~few MB), no browser/Chromium download |
 | puppeteer | browser | yes | Chrome/131.0.6778.204 | yes | downloads a full Chromium (~150-300MB) on install |
 | playwright | browser | yes | 1.60.0 | yes | installs Chromium via `playwright install` (~150-300MB) |
-| gotenberg | browser | no (no Gotenberg at http://localhost:3000 (run: docker run --rm -p 3000:3000 gotenberg/gotenberg:8)) | — | yes | docker image bundling Chromium + LibreOffice (~1GB); HTTP service |
+| gotenberg | browser | yes | http://localhost:3000 | yes | docker image bundling Chromium + LibreOffice (~1GB); HTTP service |
 | react-pdf | react | yes | 4.5.1 | no | React + Yoga (flexbox) layout; no HTML/CSS, no browser |
 | pdfkit | draw-api | yes | 0.15.2 | no | pure-JS draw API; manual layout, no HTML/CSS engine |
 | jspdf | draw-api | yes | 2.5.2 | no | browser/Node draw API; autotable plugin for tables |
-| typst | typesetting | no (typst not found on PATH) | — | no | single self-contained Rust binary (~30MB); no browser |
+| typst | typesetting | yes | typst 0.14.2 (unknown hash) | no | single self-contained Rust binary (~30MB); no browser |
 | wkhtmltopdf | reference | no (wkhtmltopdf not found on PATH) | — | yes | bundles a patched QtWebKit (~50MB); legacy, unmaintained |
-| weasyprint | reference | no (weasyprint not found on PATH) | — | no | Python + Cairo/Pango stack; no browser, but heavy native deps |
+| weasyprint | reference | yes | WeasyPrint version 69.0 | no | Python + Cairo/Pango stack; no browser, but heavy native deps |
 
 ## Metrics (every cell maps to a workload id)
 
 | Engine | Workload | Warm p50/p95 ms | Cold p50/p95 ms | Init p50/p95 ms | Tput /s | Peak RSS KiB | PDF KiB | PNG sim |
 |---|---|---|---|---|---|---|---|---|
-| turbo-pdf | invoice | — | — | — | — | — | — | — | pending Phase 10 napi (@turbo-html2pdf/core not built yet) |
-| turbo-pdf | report-100 | — | — | — | — | — | — | — | pending Phase 10 napi (@turbo-html2pdf/core not built yet) |
-| turbo-pdf | report-1k | — | — | — | — | — | — | — | pending Phase 10 napi (@turbo-html2pdf/core not built yet) |
-| turbo-pdf | legal | — | — | — | — | — | — | — | pending Phase 10 napi (@turbo-html2pdf/core not built yet) |
-| turbo-pdf | mixed | — | — | — | — | — | — | — | pending Phase 10 napi (@turbo-html2pdf/core not built yet) |
-| puppeteer | invoice | 202.67/241.88 | 352.75/417.87 | 557.22/985.64 | 9.0 | 150960.0 | 43.9 | 0.980 |
-| puppeteer | report-100 | 284.65/388.58 | 468.08/678.32 | 651.81/775.62 | 10.0 | 158656.0 | 190.8 | 0.933 |
-| puppeteer | report-1k | 995.39/996.28 | 911.87/984.06 | 499.26/590.52 | 2.3 | 319440.0 | 1733.8 | 0.932 |
-| puppeteer | legal | 162.12/175.21 | 247.99/274.93 | 393.53/435.13 | 15.1 | 415872.0 | 70.6 | 0.864 |
-| puppeteer | mixed | 136.33/137.17 | 215.23/251.31 | 416.06/425.64 | 19.9 | 426528.0 | 86.0 | 0.907 |
-| playwright | invoice | 64.63/65.99 | 69.40/70.73 | 59.94/63.69 | 36.6 | 430672.0 | 17.3 | 0.980 |
-| playwright | report-100 | 65.23/74.70 | 77.05/78.63 | 61.35/62.72 | 35.5 | 492928.0 | 23.8 | 0.933 |
-| playwright | report-1k | 177.24/213.04 | 176.08/196.11 | 73.98/76.88 | 11.7 | 496768.0 | 97.7 | 0.932 |
-| playwright | legal | 99.67/107.29 | 119.66/132.67 | 93.42/105.12 | 24.1 | 480320.0 | 41.6 | 0.864 |
-| playwright | mixed | 121.65/137.38 | 88.40/94.10 | 74.86/79.01 | 26.0 | 384176.0 | 26.8 | 0.907 |
-| gotenberg | invoice | — | — | — | — | — | — | — | no Gotenberg at http://localhost:3000 (run: docker run --rm -p 3000:3000 gotenberg/gotenberg:8) |
-| gotenberg | report-100 | — | — | — | — | — | — | — | no Gotenberg at http://localhost:3000 (run: docker run --rm -p 3000:3000 gotenberg/gotenberg:8) |
-| gotenberg | report-1k | — | — | — | — | — | — | — | no Gotenberg at http://localhost:3000 (run: docker run --rm -p 3000:3000 gotenberg/gotenberg:8) |
-| gotenberg | legal | — | — | — | — | — | — | — | no Gotenberg at http://localhost:3000 (run: docker run --rm -p 3000:3000 gotenberg/gotenberg:8) |
-| gotenberg | mixed | — | — | — | — | — | — | — | no Gotenberg at http://localhost:3000 (run: docker run --rm -p 3000:3000 gotenberg/gotenberg:8) |
-| react-pdf | invoice | 26.94/28.86 | 33.04/37.33 | 0.00/0.01 | 62.6 | 401408.0 | 10.1 | 0.989 |
-| react-pdf | report-100 | 145.15/153.29 | 145.26/145.77 | 0.01/0.01 | 8.7 | 427088.0 | 16.4 | 0.943 |
-| react-pdf | report-1k | 1532.24/1761.41 | 1805.04/1822.79 | 0.01/0.01 | 0.5 | 713440.0 | 86.5 | 0.943 |
-| react-pdf | legal | 103.17/103.35 | 104.63/105.38 | 0.00/0.01 | 10.4 | 1138032.0 | 19.8 | 0.853 |
-| react-pdf | mixed | 235.76/258.94 | 328.59/336.41 | 0.01/0.01 | 5.5 | 1269552.0 | 15.1 | 0.899 |
-| pdfkit | invoice | 104.44/194.37 | 38.35/52.19 | 0.00/0.00 | 33.0 | 865056.0 | 13.5 | — |
-| pdfkit | report-100 | 28.49/30.44 | 37.76/50.57 | 0.01/0.01 | 32.9 | 621200.0 | 16.9 | — |
-| pdfkit | report-1k | 104.52/117.32 | 116.92/121.68 | 0.00/0.01 | 8.9 | 406528.0 | 56.2 | — |
-| pdfkit | legal | 31.66/42.01 | 30.27/31.07 | 0.00/0.00 | 50.8 | 481712.0 | 22.3 | — |
-| pdfkit | mixed | 11.80/13.70 | 12.50/13.96 | 0.00/0.00 | 81.2 | 494864.0 | 16.5 | — |
-| jspdf | invoice | 3.88/3.94 | 4.97/7.45 | 0.00/0.00 | 232.9 | 530560.0 | 36.0 | 0.969 |
-| jspdf | report-100 | 14.55/18.11 | 13.43/17.97 | 0.00/0.00 | 82.7 | 558304.0 | 138.8 | 0.939 |
-| jspdf | report-1k | 92.49/134.32 | 92.63/95.33 | 0.01/0.01 | 11.6 | 660816.0 | 1205.0 | 0.939 |
-| jspdf | legal | 0.84/0.87 | 0.88/0.93 | 0.00/0.00 | 494.9 | 750112.0 | 16.8 | 0.929 |
-| jspdf | mixed | 3.61/5.82 | 3.72/3.75 | 0.00/0.00 | 256.4 | 754368.0 | 56.9 | 0.920 |
-| typst | invoice | — | — | — | — | — | — | — | typst not found on PATH |
-| typst | report-100 | — | — | — | — | — | — | — | typst not found on PATH |
-| typst | report-1k | — | — | — | — | — | — | — | typst not found on PATH |
-| typst | legal | — | — | — | — | — | — | — | typst not found on PATH |
-| typst | mixed | — | — | — | — | — | — | — | typst not found on PATH |
+| turbo-html2pdf | invoice | 1.27/1.31 | 1.48/1.54 | — | 810.2 | 231728.0 | 37.8 | 0.979 |
+| turbo-html2pdf | report-100 | 10.88/11.56 | 11.56/11.70 | — | 90.3 | 239360.0 | 319.0 | 0.933 |
+| turbo-html2pdf | report-1k | 118.97/121.70 | 129.60/133.39 | — | 8.3 | 409536.0 | 3763.9 | 0.933 |
+| turbo-html2pdf | legal | 25.50/26.03 | 26.44/27.15 | — | 38.6 | 491632.0 | 1174.2 | 0.877 |
+| turbo-html2pdf | mixed | 8.58/8.74 | 9.16/9.21 | — | 112.1 | 526688.0 | 313.7 | 0.918 |
+| puppeteer | invoice | 86.10/93.38 | 132.20/135.25 | 224.69/300.88 | 30.7 | 550192.0 | 43.9 | 0.980 |
+| puppeteer | report-100 | 107.99/114.10 | 158.20/162.85 | 259.74/299.27 | 26.9 | 618384.0 | 190.8 | 0.933 |
+| puppeteer | report-1k | 384.32/388.41 | 428.82/443.57 | 258.36/301.00 | 7.3 | 790528.0 | 1733.8 | 0.932 |
+| puppeteer | legal | 124.38/183.12 | 147.32/162.63 | 227.11/300.16 | 20.7 | 701232.0 | 70.6 | 0.864 |
+| puppeteer | mixed | 94.10/98.92 | 228.93/273.29 | 364.87/399.15 | 29.9 | 628992.0 | 86.0 | 0.907 |
+| playwright | invoice | 46.25/48.33 | 49.35/50.29 | 47.37/48.07 | 55.6 | 392880.0 | 17.3 | 0.980 |
+| playwright | report-100 | 51.15/54.85 | 53.90/56.98 | 47.50/49.81 | 47.9 | 414176.0 | 23.8 | 0.933 |
+| playwright | report-1k | 186.63/212.79 | 169.88/205.55 | 80.96/162.14 | 13.3 | 422608.0 | 97.7 | 0.932 |
+| playwright | legal | 70.96/82.67 | 97.51/136.94 | 73.02/79.70 | 45.7 | 425840.0 | 41.6 | 0.864 |
+| playwright | mixed | 57.02/59.18 | 57.95/58.82 | 47.02/47.76 | 47.1 | 433424.0 | 26.8 | 0.907 |
+| gotenberg | invoice | 66.94/90.43 | 70.64/75.35 | 0.00/0.00 | 19.0 | 424128.0 | 18.0 | — |
+| gotenberg | report-100 | 79.12/84.91 | 79.22/91.34 | 0.00/0.00 | 26.2 | 416288.0 | 24.6 | — |
+| gotenberg | report-1k | 204.36/217.81 | 203.63/211.90 | 0.00/0.00 | 10.6 | 417856.0 | 99.3 | — |
+| gotenberg | legal | 80.36/88.03 | 79.61/85.01 | 0.00/0.00 | 20.5 | 417216.0 | 43.4 | — |
+| gotenberg | mixed | 72.60/77.96 | 72.99/79.88 | 0.00/0.00 | 27.1 | 417632.0 | 28.2 | — |
+| react-pdf | invoice | 14.47/14.86 | 16.51/18.69 | 0.00/0.00 | 93.9 | 442176.0 | 10.1 | 0.989 |
+| react-pdf | report-100 | 96.77/99.97 | 98.66/101.30 | 0.00/0.00 | 13.3 | 467968.0 | 16.4 | 0.943 |
+| react-pdf | report-1k | 1295.65/1429.86 | 1291.14/1321.23 | 0.00/0.00 | 0.8 | 933024.0 | 86.5 | 0.943 |
+| react-pdf | legal | 74.45/75.56 | 74.22/76.75 | 0.00/0.00 | 14.2 | 1214928.0 | 19.8 | 0.853 |
+| react-pdf | mixed | 49.64/50.99 | 50.16/57.44 | 0.00/0.00 | 26.3 | 1342416.0 | 15.1 | 0.899 |
+| pdfkit | invoice | 6.02/7.66 | 6.80/8.85 | 0.00/0.00 | 170.2 | 1414624.0 | 13.5 | — |
+| pdfkit | report-100 | 9.26/10.74 | 9.62/11.53 | 0.00/0.00 | 105.3 | 1452064.0 | 16.9 | — |
+| pdfkit | report-1k | 47.20/53.43 | 48.29/51.11 | 0.00/0.00 | 20.8 | 1533632.0 | 56.2 | — |
+| pdfkit | legal | 12.10/13.13 | 11.79/13.10 | 0.00/0.00 | 85.7 | 1534704.0 | 22.3 | — |
+| pdfkit | mixed | 7.77/8.85 | 7.81/9.37 | 0.00/0.00 | 122.8 | 1534768.0 | 16.5 | — |
+| jspdf | invoice | 2.06/3.80 | 2.56/4.47 | 0.00/0.00 | 422.7 | 1544848.0 | 36.0 | 0.969 |
+| jspdf | report-100 | 7.45/11.33 | 7.97/9.85 | 0.00/0.00 | 131.1 | 1542720.0 | 138.8 | 0.939 |
+| jspdf | report-1k | 63.98/64.96 | 64.82/71.19 | 0.00/0.00 | 15.6 | 1548736.0 | 1205.0 | 0.939 |
+| jspdf | legal | 0.70/1.77 | 0.70/0.74 | 0.00/0.00 | 1197.2 | 1555008.0 | 16.8 | 0.929 |
+| jspdf | mixed | 2.75/4.94 | 2.85/4.96 | 0.00/0.00 | 323.6 | 1560544.0 | 56.9 | 0.920 |
+| typst | invoice | 63.78/65.55 | 62.69/64.41 | 0.00/0.00 | 67.4 | 1537568.0 | 37.1 | 0.981 |
+| typst | report-100 | 79.02/134.81 | 76.96/78.33 | 0.00/0.00 | 58.2 | 1537584.0 | 146.0 | 0.916 |
+| typst | report-1k | 220.07/227.82 | 221.42/230.05 | 0.00/0.00 | 20.1 | 1546832.0 | 1292.4 | 0.915 |
+| typst | legal | 72.43/73.49 | 72.13/73.18 | 0.00/0.00 | 65.0 | 372192.0 | 44.6 | 0.831 |
+| typst | mixed | 69.29/71.09 | 70.59/73.14 | 0.00/0.00 | 66.4 | 373552.0 | 64.5 | 0.883 |
 | wkhtmltopdf | invoice | — | — | — | — | — | — | — | wkhtmltopdf not found on PATH |
 | wkhtmltopdf | report-100 | — | — | — | — | — | — | — | wkhtmltopdf not found on PATH |
 | wkhtmltopdf | report-1k | — | — | — | — | — | — | — | wkhtmltopdf not found on PATH |
 | wkhtmltopdf | legal | — | — | — | — | — | — | — | wkhtmltopdf not found on PATH |
 | wkhtmltopdf | mixed | — | — | — | — | — | — | — | wkhtmltopdf not found on PATH |
-| weasyprint | invoice | — | — | — | — | — | — | — | weasyprint not found on PATH |
-| weasyprint | report-100 | — | — | — | — | — | — | — | weasyprint not found on PATH |
-| weasyprint | report-1k | — | — | — | — | — | — | — | weasyprint not found on PATH |
-| weasyprint | legal | — | — | — | — | — | — | — | weasyprint not found on PATH |
-| weasyprint | mixed | — | — | — | — | — | — | — | weasyprint not found on PATH |
+| weasyprint | invoice | 375.82/386.05 | 379.29/392.95 | 0.00/0.00 | 11.4 | 379136.0 | 10.8 | 0.979 |
+| weasyprint | report-100 | 562.74/578.98 | 558.78/576.05 | 0.00/0.00 | 7.3 | 383840.0 | 18.3 | 0.924 |
+| weasyprint | report-1k | 2549.72/2913.28 | 2547.49/2580.65 | 0.00/0.00 | 1.3 | 388720.0 | 95.9 | 0.924 |
+| weasyprint | legal | 443.96/458.19 | 453.13/514.12 | 0.00/0.00 | 9.9 | 333376.0 | 17.0 | 0.862 |
+| weasyprint | mixed | 432.30/447.98 | 437.45/458.38 | 0.00/0.00 | 10.2 | 339664.0 | 14.7 | 0.898 |

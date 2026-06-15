@@ -44,6 +44,13 @@ export async function similarityOf(
   const refImg = await pdfToPng(reference, DPI);
   const candImg = await pdfToPng(candidate, DPI);
   if (!refImg || !candImg) return { similarity: null, reason: "rasterization failed" };
-  const similarity = compare(PNG.sync.read(refImg), PNG.sync.read(candImg));
-  return { similarity, reason: null };
+  // A malformed raster (e.g. an unexpected page geometry from some engines) can
+  // make pngjs throw; never let the PNG-equivalence step abort the whole bench —
+  // record it as uncomputable and keep the timing numbers.
+  try {
+    const similarity = compare(PNG.sync.read(refImg), PNG.sync.read(candImg));
+    return { similarity, reason: null };
+  } catch (e) {
+    return { similarity: null, reason: `png compare failed: ${(e as Error).message}` };
+  }
 }

@@ -23,6 +23,7 @@ napi/
 
 # ---- WASM ----
 pkg/
+pkg-node/
 *.wasm
 
 # ---- Python / PyO3 (maturin) ----

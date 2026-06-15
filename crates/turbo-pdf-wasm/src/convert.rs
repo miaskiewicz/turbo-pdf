@@ -10,8 +10,9 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 use turbo_pdf_core::{
-    CompileError, CompileOptions, Diagnostics, EmitOptions, FontFace, FontRegistry, ImageResolver,
-    ImageWatermark, Lint, MissingPolicy, RenderError, Rgba, Span, TextWatermark, Watermark,
+    CompileError, CompileOptions, Diagnostics, EmitOptions, Encryption, FontFace, FontRegistry,
+    ImageResolver, ImageWatermark, Lint, MissingPolicy, Permissions, RenderError, Rgba, Span,
+    TextWatermark, Watermark,
 };
 use wasm_bindgen::prelude::*;
 
@@ -187,6 +188,72 @@ impl JsMeta {
     }
 }
 
+/// AES-256 password-encryption settings: `{ userPassword, ownerPassword?,
+/// print?, modify?, copy?, annotate?, fillForms?, accessibility?, assemble?,
+/// highQualityPrint? }`. Permission flags default to all-granted.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct JsEncryption {
+    pub user_password: String,
+    pub owner_password: Option<String>,
+    pub print: Option<bool>,
+    pub modify: Option<bool>,
+    pub copy: Option<bool>,
+    pub annotate: Option<bool>,
+    pub fill_forms: Option<bool>,
+    pub accessibility: Option<bool>,
+    pub assemble: Option<bool>,
+    pub high_quality_print: Option<bool>,
+}
+
+impl JsEncryption {
+    /// Lower into the core [`Encryption`], applying permission overrides onto the
+    /// all-granted default (an omitted flag keeps the granted default).
+    pub fn into_core(self) -> Encryption {
+        let d = Permissions::all();
+        let perms = Permissions {
+            print: self.print.unwrap_or(d.print),
+            modify: self.modify.unwrap_or(d.modify),
+            copy: self.copy.unwrap_or(d.copy),
+            annotate: self.annotate.unwrap_or(d.annotate),
+            fill_forms: self.fill_forms.unwrap_or(d.fill_forms),
+            accessibility: self.accessibility.unwrap_or(d.accessibility),
+            assemble: self.assemble.unwrap_or(d.assemble),
+            high_quality_print: self.high_quality_print.unwrap_or(d.high_quality_print),
+        };
+        Encryption {
+            user_password: self.user_password,
+            owner_password: self.owner_password,
+            permissions: perms,
+        }
+    }
+}
+
+/// The per-render conformance / encryption toggles, deserialized inline on
+/// [`JsRenderArgs`](crate::program). Lowered onto [`EmitOptions`] after the
+/// metadata fields.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct JsConformance {
+    pub pdf_a: bool,
+    pub pdf_ua: bool,
+    pub lang: Option<String>,
+    pub cmyk: bool,
+    pub encryption: Option<JsEncryption>,
+}
+
+impl JsConformance {
+    /// Apply the conformance toggles onto an [`EmitOptions`] already carrying the
+    /// metadata and watermark.
+    pub fn apply(self, opts: &mut EmitOptions) {
+        opts.cmyk = self.cmyk;
+        opts.pdf_a = self.pdf_a;
+        opts.pdf_ua = self.pdf_ua;
+        opts.lang = self.lang;
+        opts.encryption = self.encryption.map(JsEncryption::into_core);
+    }
+}
+
 /// Build a [`FontRegistry`] from the JS font list, skipping any face whose bytes
 /// fail to parse (its glyphs simply fall through the fallback chain to `.notdef`
 /// + a lint, exactly as the core handles a missing glyph).
@@ -273,6 +340,16 @@ impl From<RenderError> for JsError {
 }
 
 impl JsError {
+    /// Build an error for a PDF append/merge failure. Append errors carry no
+    /// source span, so a zeroed span is used under a stable `Append` code.
+    pub fn append(message: String) -> JsError {
+        JsError {
+            code: "Append".to_string(),
+            message,
+            span: Span::default().into(),
+        }
+    }
+
     /// Serialize into a `JsValue` suitable for `Err(..)`, so the JS caller sees a
     /// structured `{ code, message, span }` object on the rejection path.
     pub fn into_jsvalue(self) -> JsValue {

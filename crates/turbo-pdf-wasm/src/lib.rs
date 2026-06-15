@@ -31,7 +31,7 @@ mod program;
 
 use wasm_bindgen::prelude::*;
 
-pub use program::{compile, Program};
+pub use program::{append_pdf, compile, Program};
 
 /// The fixed render-clock sentinel used when the caller omits `now`
 /// (`2000-01-01T00:00:00Z`, matching the emitter's creation-date sentinel). This

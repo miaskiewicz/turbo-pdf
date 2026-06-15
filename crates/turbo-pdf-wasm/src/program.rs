@@ -6,14 +6,14 @@
 use serde::Deserialize;
 use turbo_pdf_core::style::{parse_stylesheet, AtRule, TokenSet};
 use turbo_pdf_core::{
-    build_cascade, compile as core_compile, emit_pdf_with_images, render_pages, Cascade,
-    Diagnostics, EmitOptions, FontRegistry, ImageResolver, NoImages, RenderInputs,
+    append_pdfs, build_cascade, compile as core_compile, emit_pdf_with_images, render_pages,
+    Cascade, Diagnostics, EmitOptions, FontRegistry, ImageResolver, NoImages, RenderInputs,
 };
 use wasm_bindgen::prelude::*;
 
 use crate::convert::{
-    build_registry, diagnostics_to_js, JsCompileOptions, JsDiagnostic, JsFont, JsImage, JsMeta,
-    JsWatermark, MapResolver,
+    build_registry, diagnostics_to_js, JsCompileOptions, JsConformance, JsDiagnostic, JsFont,
+    JsImage, JsMeta, JsWatermark, MapResolver,
 };
 use crate::DEFAULT_NOW;
 
@@ -42,6 +42,15 @@ struct JsRenderArgs {
     watermark: Option<JsWatermark>,
     /// Render-clock override (Unix seconds). Omit for the deterministic default.
     now: Option<i64>,
+    /// Per-render conformance / encryption toggles: `{ pdfA?, pdfUa?, lang?,
+    /// cmyk?, encryption? }`. Flattened so the toggles live at the top level of
+    /// the render-args object alongside `meta`/`watermark`.
+    #[serde(flatten)]
+    conformance: JsConformance,
+    /// Foreign PDF documents (each a `Uint8Array`) glued page-by-page AFTER the
+    /// rendered pages, in order.
+    #[serde(default)]
+    append_pdfs: Vec<serde_bytes::ByteBuf>,
 }
 
 /// Compile `template_html` into a reusable [`Program`]. `opts` is the optional
@@ -114,10 +123,13 @@ impl Program {
             let face = registry.select(&[], 400, false).cloned();
             w.into_core(face)
         });
-        let emit = EmitOptions {
+        let conformance = std::mem::take(&mut args.conformance);
+        let append = std::mem::take(&mut args.append_pdfs);
+        let mut emit = EmitOptions {
             watermark,
             ..meta.into_core()
         };
+        conformance.apply(&mut emit);
 
         let mut diags = Diagnostics::default();
         let pages = {
@@ -133,11 +145,13 @@ impl Program {
             render_pages(&inputs, &mut diags)
                 .map_err(|e| crate::convert::JsError::from(e).into_jsvalue())?
         };
+        let page_count = pages.len();
         let pdf = emit_pdf_with_images(&pages, &emit, image_source(&resolver));
+        let pdf = merge_appended(pdf, &append)?;
         Ok(RenderOutcome {
             pdf,
             diagnostics: diagnostics_to_js(&diags),
-            page_count: pages.len(),
+            page_count,
         })
     }
 }
@@ -175,6 +189,35 @@ fn parse_render_args(args: JsValue) -> Result<JsRenderArgs, JsValue> {
         return Ok(JsRenderArgs::default());
     }
     serde_wasm_bindgen::from_value(args).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Glue each foreign PDF blob after the rendered `pdf`, page by page. A parse
+/// failure becomes a structured JS error. With no extras the input is unchanged.
+fn merge_appended(pdf: Vec<u8>, extras: &[serde_bytes::ByteBuf]) -> Result<Vec<u8>, JsValue> {
+    if extras.is_empty() {
+        return Ok(pdf);
+    }
+    let refs: Vec<&[u8]> = extras.iter().map(|b| b.as_ref()).collect();
+    append_pdfs(&pdf, &refs).map_err(append_error)
+}
+
+/// Translate an [`turbo_pdf_core::AppendError`] into a structured JS error value.
+fn append_error(e: turbo_pdf_core::AppendError) -> JsValue {
+    crate::convert::JsError::append(e.to_string()).into_jsvalue()
+}
+
+/// Glue one or more foreign PDF documents after `base`, page by page, returning
+/// the merged PDF as a `Uint8Array`. Mirrors `render`'s `appendPdfs` option but
+/// runs on already-emitted bytes. Rejects (structured `{ code, message, span }`)
+/// if any input fails to parse.
+#[wasm_bindgen(js_name = appendPdf)]
+pub fn append_pdf(base: &[u8], extras: JsValue) -> Result<JsValue, JsValue> {
+    let extras: Vec<serde_bytes::ByteBuf> =
+        serde_wasm_bindgen::from_value(extras).map_err(|e| JsValue::from_str(&e.to_string()))?;
+    let refs: Vec<&[u8]> = extras.iter().map(|b| b.as_ref()).collect();
+    let merged = append_pdfs(base, &refs).map_err(append_error)?;
+    serde_wasm_bindgen::to_value(&serde_bytes::Bytes::new(&merged))
+        .map_err(|e| JsValue::from_str(&e.to_string()))
 }
 
 /// The image source for layout/emit: the caller's resolver when it carries

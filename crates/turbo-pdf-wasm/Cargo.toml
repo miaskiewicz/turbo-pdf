@@ -37,6 +37,16 @@ serde-wasm-bindgen = "0.6"
 serde_bytes = "0.11"
 js-sys = "0.3"
 
+# Browser CSPRNG backends for the `encrypt` (salts/IVs) and `append` (lopdf pulls
+# `rand`) features. These are wasm-target-only: on the host they are unused, but
+# the `wasm32-unknown-unknown` build needs a randomness backend. getrandom 0.2's
+# `js` feature and 0.3's `wasm_js` feature route to the Web Crypto API. Building
+# the `.wasm` additionally needs `RUSTFLAGS='--cfg getrandom_backend="wasm_js"'`
+# for the 0.3 line (see README / build script).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom_02 = { package = "getrandom", version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+
 # wasm-bindgen-rayon multithreading is intentionally OFF by default (§8.3): the
 # default build is single-threaded so it runs in any browser without
 # cross-origin-isolation. The flag is reserved but wires nothing yet.

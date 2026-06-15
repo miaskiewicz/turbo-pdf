@@ -215,23 +215,20 @@ endnotes, etc.).
 > add a little per-page work); they're *available* by default but only *active* when
 > you ask. Endnotes and links just work from the markup.
 
-### Opt-in: SVG images (build flag)
+### Opt-in: SVG images
 
 SVG vector images (`<img>`/`background-image`) are **off by default to keep the
-download small.** SVG pulls in the [`resvg`](https://crates.io/crates/resvg)
-rasterizer — a few MB — which matters most for the **~3 MB browser/wasm bundle**.
-Everything else (PNG/JPEG, all layout) works without it. To include SVG:
-
-```toml
-# Rust: enable the feature on the core crate
-turbo-pdf-core = { version = "*", features = ["svg"] }
-```
+download small** — SVG pulls in the [`resvg`](https://crates.io/crates/resvg)
+rasterizer (a few MB), which matters most for the bundle. Everything else (PNG/JPEG,
+all layout) works without it. **Need SVG? Just install the SVG-enabled package** —
+same API, prebuilt with resvg, no build step:
 
 ```bash
-# or for a build/binding:  cargo build -p turbo-pdf-core --features svg
-# the napi / wasm bindings can be rebuilt from source with the feature to emit an
-# SVG-enabled package (the default prebuilt packages omit resvg on purpose).
+npm i turbo-html2pdf        # default — small, no SVG
+npm i turbo-html2pdf-svg    # identical API, SVG support baked in (resvg)
 ```
+
+(Rust users: enable the feature directly — `turbo-pdf-core = { features = ["svg"] }`.)
 
 ## Status
 

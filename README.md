@@ -209,11 +209,12 @@ endnotes, etc.).
 | **Endnotes** | `<t:endnote>…note body…</t:endnote>` drops a numbered marker and collects the note; `<t:endnotes/>` renders the collected list at its position. |
 | **PDF/A-2b (archival)** | Request it on the render options (`pdfA: true`) → the document is emitted PDF/A-2b conformant (embedded sRGB ICC, XMP, no transparency). Validates green under veraPDF `--flavour 2b`. |
 | **PDF/UA (accessible / tagged)** | Request it on the render options (`pdfUa: true`) → adds the tagged structure tree (headings/lists/tables, `<img alt>`, reading order) for screen readers. |
-| **CMYK print color** | Enabled via the `print-color` build feature; then `cmyk(…)` colors emit DeviceCMYK for real-press output. |
+| **CMYK print color** | Request it on the render options (`cmyk: true`) → output is emitted in DeviceCMYK for a real press. **Default is RGB** (right for screen). |
 
-> PDF/A and PDF/UA are **modes you opt into per render** (they change the output and
-> add a little per-page work); they're *available* by default but only *active* when
-> you ask. Endnotes and links just work from the markup.
+> PDF/A, PDF/UA and CMYK are **modes you opt into per render** (they change the
+> output); they're *available* by default but only *active* when you ask — the
+> default stays screen-friendly RGB, no transparency restrictions, untagged.
+> Endnotes and links just work from the markup, no option needed.
 
 ### Opt-in: SVG images
 

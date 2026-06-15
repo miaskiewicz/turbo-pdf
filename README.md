@@ -231,6 +231,36 @@ npm i turbo-html2pdf-svg    # identical API, SVG support baked in (resvg)
 
 (Rust users: enable the feature directly — `turbo-pdf-core = { features = ["svg"] }`.)
 
+### Watermarks
+
+A watermark is a **render option** — it paints behind the page body on every page.
+Two kinds:
+
+- **Text** — a faded, rotated word. Out-of-the-box `DRAFT` (gray, 25% opacity, 45°),
+  or any word/colour/opacity/angle. The word is shaped + embedded from one of the
+  fonts you pass.
+- **Image** — a raster image behind the body, centered or tiled, at a chosen opacity.
+
+```js
+// DRAFT stamp (uses the first provided font), via the render options:
+program.render({
+  data, css, fonts: [draftFont],
+  watermark: { text: 'DRAFT' },                         // defaults: gray, 25%, 45°
+})
+
+// fully custom text:
+watermark: { text: 'CONFIDENTIAL', color: '#cc0000', opacity: 0.15, angle: 30 }
+
+// image watermark (name resolved from the provided images), tiled & faint:
+watermark: { image: 'logo', tiled: true, opacity: 0.08 }
+```
+
+In Rust the same lives on `EmitOptions.watermark` (`Watermark::Text(TextWatermark)` /
+`Watermark::Image(ImageWatermark)`; `TextWatermark::draft(face)` is the preset).
+
+> The watermark **render option** in the JS/WASM/Python bindings ships in `v0.1.1`
+> (the engine has had it since the PDF emitter; the bindings just expose it).
+
 ## Status
 
 `v0.1.0`. The core engine is complete and heavily tested (the `turbo-pdf-core`

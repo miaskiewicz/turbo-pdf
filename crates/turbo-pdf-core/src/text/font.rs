@@ -8,6 +8,43 @@ use std::sync::{Arc, Mutex};
 use rustybuzz::ttf_parser::Face as TtfFace;
 use rustybuzz::{Face as RbFace, UnicodeBuffer};
 
+/// The parsed faces borrowing the font program: `ttf-parser` for metrics/cmap
+/// and `rustybuzz` for shaping. Parsing a font is the dominant per-call cost, so
+/// both are built once and reused for every metric/coverage/shape query.
+struct Parsed<'a> {
+    ttf: TtfFace<'a>,
+    rb: RbFace<'a>,
+}
+
+self_cell::self_cell!(
+    /// Owns the font bytes and the faces parsed from them (a self-referential
+    /// pair: the faces borrow the bytes). Built once per [`FontFace`].
+    struct OwnedFaces {
+        owner: Vec<u8>,
+        #[covariant]
+        dependent: Parsed,
+    }
+);
+
+/// Parse the metric and shaping faces from font `bytes`; `Err` if the bytes are
+/// not a valid font. `rustybuzz` accepts exactly what `ttf-parser` validated, so
+/// once the metric face parses the shaping face is infallible.
+fn build_parsed(bytes: &[u8]) -> Result<Parsed<'_>, ()> {
+    let ttf = TtfFace::parse(bytes, 0).map_err(|_| ())?;
+    let rb = RbFace::from_slice(bytes, 0).expect("rustybuzz parses what ttf-parser validated");
+    Ok(Parsed { ttf, rb })
+}
+
+/// Read the cached metrics `(units_per_em, ascent, descent, line_gap)`.
+fn metrics(p: &Parsed) -> (u16, i16, i16, i16) {
+    (
+        p.ttf.units_per_em(),
+        p.ttf.ascender(),
+        p.ttf.descender(),
+        p.ttf.line_gap(),
+    )
+}
+
 /// A shaped glyph with positioning in font design units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShapedGlyph {
@@ -18,11 +55,12 @@ pub struct ShapedGlyph {
     pub cluster: u32,
 }
 
-/// A loaded font face. Cheap to clone (the font bytes and the glyph-lookup cache
-/// are shared via `Arc`).
-#[derive(Debug, Clone)]
+/// A loaded font face. Cheap to clone (the parsed faces and the shape cache are
+/// shared via `Arc`).
+#[derive(Clone)]
 pub struct FontFace {
-    data: Arc<Vec<u8>>,
+    /// The font bytes parsed once into reusable `ttf-parser`/`rustybuzz` faces.
+    faces: Arc<OwnedFaces>,
     family: String,
     weight: u16,
     italic: bool,
@@ -30,17 +68,21 @@ pub struct FontFace {
     ascent: i16,
     descent: i16,
     line_gap: i16,
-    /// Memoizes `char -> glyph id` lookups. Resolving a glyph requires parsing
-    /// the font tables; layout queries coverage once per *character occurrence*
-    /// (e.g. every glyph of every row), so without this each query re-parsed the
-    /// whole face. The cache collapses that to one parse per *distinct* char and
-    /// is shared across clones (all clones of a face share one font program).
-    glyph_cache: Arc<Mutex<HashMap<char, Option<u16>>>>,
-    /// Memoizes shaping by run text. Shaping re-parses the face, and layout
+    /// Memoizes shaping by run text. Shaping is real per-run work, and layout
     /// shapes each run at least twice (measuring its width, then emitting its
     /// glyphs) plus once more for every repeated string (table cells, labels);
     /// caching by text collapses those to one shape per *distinct* run.
     shape_cache: Arc<Mutex<HashMap<String, Vec<ShapedGlyph>>>>,
+}
+
+impl std::fmt::Debug for FontFace {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FontFace")
+            .field("family", &self.family)
+            .field("weight", &self.weight)
+            .field("italic", &self.italic)
+            .finish()
+    }
 }
 
 impl FontFace {
@@ -52,11 +94,11 @@ impl FontFace {
         weight: u16,
         italic: bool,
     ) -> Option<FontFace> {
-        let face = TtfFace::parse(&data, 0).ok()?;
-        let units_per_em = face.units_per_em();
-        let (ascent, descent, line_gap) = (face.ascender(), face.descender(), face.line_gap());
+        crate::hot!("font.face.build");
+        let faces = OwnedFaces::try_new(data, |bytes| build_parsed(bytes)).ok()?;
+        let (units_per_em, ascent, descent, line_gap) = metrics(faces.borrow_dependent());
         Some(FontFace {
-            data: Arc::new(data),
+            faces: Arc::new(faces),
             family: family.into(),
             weight,
             italic,
@@ -64,7 +106,6 @@ impl FontFace {
             ascent,
             descent,
             line_gap,
-            glyph_cache: Arc::new(Mutex::new(HashMap::new())),
             shape_cache: Arc::new(Mutex::new(HashMap::new())),
         })
     }
@@ -76,7 +117,7 @@ impl FontFace {
     /// The raw font program bytes (the OpenType/TrueType file). The PDF emitter
     /// (Phase 9, §7) needs these to subset and embed the font program.
     pub fn data(&self) -> &[u8] {
-        &self.data
+        self.faces.borrow_owner()
     }
 
     /// Design units per em, for scaling glyph metrics into PDF text space.
@@ -124,9 +165,8 @@ impl FontFace {
         self.italic
     }
 
-    fn ttf(&self) -> TtfFace<'_> {
-        crate::hot!("font.ttf.parse");
-        TtfFace::parse(&self.data, 0).expect("font validated at construction")
+    fn ttf(&self) -> &TtfFace<'_> {
+        &self.faces.borrow_dependent().ttf
     }
 
     /// Scale factor converting design units to pixels at `font_size`.
@@ -149,33 +189,10 @@ impl FontFace {
         f32::from(self.ascent - self.descent + self.line_gap) * self.scale(font_size)
     }
 
-    /// The glyph id for a character, if the face covers it. Memoized: the first
-    /// query for a given char parses the face's cmap, subsequent queries are a
-    /// hash lookup (layout asks per character, so this is the hot path). The lock
-    /// is held only for the lookup/store, never across the parse, so concurrent
-    /// renders on a shared face still proceed in parallel.
+    /// The glyph id for a character, if the face covers it. A direct cmap lookup
+    /// on the parsed (cached) face — no per-call font parse, no lock.
     pub fn glyph_index(&self, ch: char) -> Option<u16> {
-        if let Some(hit) = self.cached_glyph(ch) {
-            return hit;
-        }
-        let resolved = self.ttf().glyph_index(ch).map(|g| g.0);
-        self.store_glyph(ch, resolved);
-        resolved
-    }
-
-    fn cached_glyph(&self, ch: char) -> Option<Option<u16>> {
-        self.glyph_cache
-            .lock()
-            .expect("glyph cache not poisoned")
-            .get(&ch)
-            .copied()
-    }
-
-    fn store_glyph(&self, ch: char, resolved: Option<u16>) {
-        self.glyph_cache
-            .lock()
-            .expect("glyph cache not poisoned")
-            .insert(ch, resolved);
+        self.ttf().glyph_index(ch).map(|g| g.0)
     }
 
     /// Whether the face has a glyph for `ch`.
@@ -198,10 +215,9 @@ impl FontFace {
 
     fn shape_uncached(&self, text: &str) -> Vec<ShapedGlyph> {
         crate::hot!("font.shape");
-        let face = RbFace::from_slice(&self.data, 0).expect("font validated at construction");
         let mut buffer = UnicodeBuffer::new();
         buffer.push_str(text);
-        let shaped = rustybuzz::shape(&face, &[], buffer);
+        let shaped = rustybuzz::shape(&self.faces.borrow_dependent().rb, &[], buffer);
         collect_glyphs(&shaped)
     }
 

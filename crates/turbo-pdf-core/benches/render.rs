@@ -96,10 +96,36 @@ fn bench_compile_to_galley(c: &mut Criterion) {
     group.finish();
 }
 
+/// Cold single-run: the realistic one-PDF case. Unlike `compile_to_galley`, the
+/// font registry is rebuilt *inside* the measured loop, so font parsing and a
+/// cold glyph/shape cache are part of the cost — this is what a process renders
+/// for a single document, the case worth optimizing.
+fn bench_cold_single_run(c: &mut Criterion) {
+    let mut group = c.benchmark_group("cold_single_run");
+    for fx in fixtures::all() {
+        group.throughput(Throughput::Bytes(fx.data.to_string().len() as u64));
+        group.bench_with_input(BenchmarkId::from_parameter(fx.name), &fx, |b, fx| {
+            b.iter(|| {
+                let registry: FontRegistry = fixtures::registry();
+                let (program, _) =
+                    compile(&fx.template, &CompileOptions::default()).expect("compile");
+                let (nodes, _) = program.render_nodes(&fx.data, NOW).expect("render_nodes");
+                let cascade = build_cascade("", "", TokenSet::default());
+                let styled = style_tree(&nodes, &cascade);
+                let mut diags = Diagnostics::default();
+                let galley = layout(&styled, CB_WIDTH, &registry, &mut diags);
+                std::hint::black_box(galley);
+            });
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_compile,
     bench_render_nodes,
-    bench_compile_to_galley
+    bench_compile_to_galley,
+    bench_cold_single_run
 );
 criterion_main!(benches);

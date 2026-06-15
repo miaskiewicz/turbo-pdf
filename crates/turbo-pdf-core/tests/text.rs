@@ -59,8 +59,9 @@ fn glyph_coverage() {
 }
 
 #[test]
-fn glyph_index_is_memoized() {
-    // Second queries hit the cache; cover both the Some and None cached paths.
+fn glyph_index_reuses_parsed_face() {
+    // Repeated queries reuse the cached parsed face; both covered and missing
+    // characters resolve consistently.
     let f = evolventa();
     let covered = f.glyph_index('Z');
     assert_eq!(f.glyph_index('Z'), covered);
@@ -68,6 +69,12 @@ fn glyph_index_is_memoized() {
     let missing = f.glyph_index('中');
     assert_eq!(f.glyph_index('中'), missing);
     assert!(missing.is_none());
+}
+
+#[test]
+fn debug_shows_family_and_style() {
+    let dbg = format!("{:?}", evolventa());
+    assert!(dbg.contains("FontFace") && dbg.contains("Evolventa"));
 }
 
 #[test]

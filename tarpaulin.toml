@@ -1,16 +1,18 @@
 # Coverage gate for the shipped crates. Dev tooling (tools/*) and benchmark
 # harnesses (benches/*) are not part of the product surface and are excluded.
-# The N-API and WASM bindings are thin cdylib shims over the covered core: a
-# Node addon / wasm32 module that tarpaulin cannot line-instrument on the host.
-# Their files are excluded from the coverage surface; the napi crate is also
-# excluded from the tarpaulin build so its native-link step never runs here.
+# The N-API, PyO3, and WASM bindings are thin cdylib shims over the covered
+# core: a Node addon / Python extension / wasm32 module that tarpaulin cannot
+# line-instrument on the host. Their files are excluded from the coverage
+# surface; the napi and py crates are also excluded from the tarpaulin build so
+# their native-link step never runs here.
 [default]
 workspace = true
-exclude = ["turbo-pdf-napi"]
+exclude = ["turbo-pdf-napi", "turbo-pdf-py"]
 exclude-files = [
     "tools/*",
     "benches/*",
     "crates/turbo-pdf-napi/*",
+    "crates/turbo-pdf-py/*",
     "crates/turbo-pdf-wasm/*",
     # Opt-in hot-path instrumentation (the `perf` feature); off in normal builds
     # and covered functionally by the `--features perf` tests in tests/perf.rs.

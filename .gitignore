@@ -25,6 +25,20 @@ napi/
 pkg/
 *.wasm
 
+# ---- Python / PyO3 (maturin) ----
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.venv-*/
+*.egg-info/
+*.whl
+wheelhouse/
+# `maturin develop` drops the compiled extension into the python source tree.
+crates/turbo-pdf-py/python/turbo_html2pdf/*.so
+crates/turbo-pdf-py/python/turbo_html2pdf/*.pyd
+crates/turbo-pdf-py/python/turbo_html2pdf/*.dylib
+
 # ---- Coverage / test output ----
 /coverage
 tarpaulin-report.html

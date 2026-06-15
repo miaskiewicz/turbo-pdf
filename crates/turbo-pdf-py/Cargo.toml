@@ -1,0 +1,31 @@
+[package]
+name = "turbo-pdf-py"
+description = "PyO3 binding: the turbo-pdf template->PDF pipeline exposed to Python (PyPI: turbo-html2pdf)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+# cdylib for the Python extension module (maturin packages it); rlib so the
+# binding still type-checks and links on the host for clippy/cc-check without
+# the Python interpreter. Mirrors the proven turbo-pdf-napi crate layout.
+[lib]
+name = "turbo_pdf_py"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+turbo-pdf-core = { path = "../turbo-pdf-core" }
+serde_json = { workspace = true }
+# PyO3 0.23 keeps a Rust MSRV the workspace's 1.82 satisfies; `abi3-py38`
+# yields a single stable-ABI wheel that loads on CPython 3.8+. The
+# `extension-module` feature drops the libpython link so the wheel is portable.
+pyo3 = { version = "0.23", default-features = false, features = [
+    "extension-module",
+    "abi3-py38",
+    "macros",
+] }
+# Bridge a Python object (dict/list/scalar) <-> serde_json::Value with no
+# intermediate JSON-string round-trip.
+pythonize = "0.23"

@@ -1,0 +1,36 @@
+[build-system]
+requires = ["maturin>=1.5,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "turbo-html2pdf"
+version = "0.1.0"
+description = "Native HTML/CSS-to-PDF engine with a Jinja-compatible templating DSL (PyO3 binding over the turbo-pdf Rust core)."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "turbo-pdf contributors" }]
+keywords = ["pdf", "html", "css", "template", "jinja", "rust"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Text Processing :: Markup :: HTML",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.urls]
+Repository = "https://github.com/miaskiewicz/turbo-html2pdf"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.maturin]
+# Mixed Rust/Python layout: the compiled extension lands at
+# `turbo_html2pdf._turbo_html2pdf` next to the pure-Python `__init__.py` shim.
+manifest-path = "Cargo.toml"
+python-source = "python"
+module-name = "turbo_html2pdf._turbo_html2pdf"
+# Build the stable-ABI (abi3) wheel matching the crate's pyo3 features.
+features = ["pyo3/extension-module"]

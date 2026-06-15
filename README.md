@@ -2,8 +2,10 @@
 
 **Turn HTML + CSS (with a Jinja templating layer) into a PDF — natively, in Rust,
 with no headless browser.** A from-scratch document engine: templating → HTML/CSS
-layout → automatic pagination → PDF, shipped as a tiny native addon for Node and
-WebAssembly. No Chromium download, no 200 ms browser spin-up, deterministic output.
+layout → automatic pagination → PDF, shipped as a tiny native addon for Node, a
+WebAssembly build for the browser, and a Python wheel. No Chromium download, no
+200 ms browser spin-up, deterministic output — and it renders with **zero caller
+fonts**, because the default sans/serif/mono fonts ship in the build.
 
 > The name says exactly what it does — HTML → PDF — and avoids clashing with the
 > unrelated "TurboPDF".
@@ -14,26 +16,27 @@ One engine, shipped to every ecosystem. Pick the one for your runtime:
 
 | Package | Registry | What it is | Install |
 |---|---|---|---|
-| **`turbo-html2pdf`** | npm | **Node** native addon — `compile`/`render` → PDF `Buffer`. The default. | `npm i turbo-html2pdf` |
-| **`turbo-html2pdf-svg`** | npm | Same as above **+ SVG images** (bundles `resvg`). Use only if you embed SVG. | `npm i turbo-html2pdf-svg` |
-| **`turbo-html2pdf-wasm`** | npm | **Browser / WASM** — the full engine client-side, no server. | `npm i turbo-html2pdf-wasm` |
-| **`turbo-html2pdf-react`** | npm | Author templates as **React** components → template string. | `npm i turbo-html2pdf-react` |
+| **`turbo-html2pdf`** | npm | **Node** native (N-API) addon — `compile`/`render` → PDF `Buffer`. The default; bundles the default fonts. | `npm i turbo-html2pdf` |
+| **`turbo-html2pdf-svg`** | npm | Same Node engine **+ SVG images** (built with the `svg` feature → bundles `resvg`). Drop-in for `turbo-html2pdf` when you embed SVG `<img>` content. | `npm i turbo-html2pdf-svg` |
+| **`turbo-html2pdf-wasm`** | npm | **Browser / WASM** — the full engine client-side, no server. **Lean: ships no fonts** (the caller supplies font bytes via the `fonts` API). | `npm i turbo-html2pdf-wasm` |
+| **`turbo-html2pdf-wasm-fonts`** | npm | Same browser engine **with the default OFL fonts embedded in the `.wasm`** — zero-config rendering, heavier (~6 MB) download. | `npm i turbo-html2pdf-wasm-fonts` |
+| **`turbo-html2pdf-react`** | npm | Author templates as **React** components → template string (at authoring time). | `npm i turbo-html2pdf-react` |
 | **`turbo-html2pdf-template`** | npm | Author templates with **plain functions** (no React). | `npm i turbo-html2pdf-template` |
-| **`turbo-html2pdf`** | PyPI | **Python** binding (PyO3) — `compile`/`render` → `bytes`. | `pip install turbo-html2pdf` |
+| **`turbo-html2pdf`** | PyPI | **Python** binding (PyO3 / maturin) — `compile`/`render` → `bytes`. Bundles the default fonts. | `pip install turbo-html2pdf` |
 
 The two authoring packages (`-react`, `-template`) only *produce the template
-string*; they pair with `turbo-html2pdf` (Node), `turbo-html2pdf-wasm` (browser),
-or the Python package to actually render. The Rust engine lives in
+string* — they pair with a render package (`turbo-html2pdf` on Node, a
+`turbo-html2pdf-wasm*` build in the browser, or the PyPI wheel) to actually emit a
+PDF. The Rust engine lives in
 [`crates/turbo-pdf-core`](https://github.com/miaskiewicz/turbo-html2pdf/tree/main/crates/turbo-pdf-core).
 
-> Status: `turbo-html2pdf`, `-react`, `-template` are live on npm at `0.1.0`;
-> `-svg`, `-wasm`, and the PyPI package ship with `v0.1.1`.
+> Status: the npm and PyPI packages ship at **`v0.1.1`**.
 
 ## 🌐 It generates PDFs entirely in the browser
 
-Because the engine is pure Rust → WebAssembly (~3 MB), it runs **100% client-side**
-— no server, no backend, no Chromium. A user pastes HTML/CSS, supplies a font as a
-`Uint8Array`, and gets PDF bytes, all in the browser tab.
+Because the engine is pure Rust → WebAssembly, it runs **100% client-side** — no
+server, no backend, no Chromium. A user pastes HTML/CSS and gets PDF bytes, all in
+the browser tab.
 
 As far as we know, **no other library does HTML/CSS → PDF in the browser**: the
 HTML→PDF tools that match its fidelity (Puppeteer, Playwright, Gotenberg, WeasyPrint,
@@ -43,13 +46,32 @@ react-pdf) are **draw APIs**, not HTML/CSS layout engines — you place every bo
 hand. turbo-html2pdf is the only one that is *both* a real HTML/CSS engine *and*
 runs with zero server.
 
+### Two browser builds: lean vs. fonts-included
+
+The WASM engine comes in two flavours, so you only pay for what you need:
+
+- **`turbo-html2pdf-wasm` (lean, ~3 MB)** — ships **no bundled fonts**. The browser
+  caller supplies font bytes at runtime via the `fonts` API. Smallest download;
+  ideal when you already have the fonts you want to embed.
+- **`turbo-html2pdf-wasm-fonts` (~6 MB)** — the **default OFL font set is embedded
+  in the `.wasm`** itself, so `font-family: sans-serif | serif | monospace` resolve
+  with zero caller setup. Heavier download, but renders out of the box.
+
 ```js
+// lean build — you supply the font bytes:
 import init, { compile } from 'turbo-html2pdf-wasm'
-await init()                                  // load the ~3 MB wasm once
+await init()                                  // load the wasm once
 const program = compile('<h1>{{ t }}</h1>')
 const { pdf } = program.render({ data: { t: 'Hello' }, css: 'h1{font-size:24pt}',
                                  fonts: [{ data: fontBytes, family: 'Inter' }] })
 // `pdf` is a Uint8Array — download it, no round-trip to a server
+
+// fonts-included build — no fonts argument needed:
+import init, { compile } from 'turbo-html2pdf-wasm-fonts'
+await init()
+const program = compile('<h1>{{ t }}</h1>')
+const { pdf } = program.render({ data: { t: 'Hi' },
+                                 css: 'h1{font-family:sans-serif;font-size:24pt}' })
 ```
 
 ---
@@ -123,7 +145,32 @@ Numbers are "on this machine", never absolutes — rerun with `cd benches/compet
 - **Shaping is memoized** by run text (the measure + place passes, and repeated
   cells, share one shape).
 - **Deterministic.** No wall clock, no randomness, no system-font lookup — identical
-  inputs produce byte-identical PDFs.
+  inputs produce byte-identical PDFs (unless you turn on encryption, which is
+  intentionally non-deterministic; see below).
+
+---
+
+## Fonts — renders with zero caller setup
+
+The Node and Python builds **bundle a default font set** (default-on), so
+`font-family: sans-serif | serif | monospace` resolve out of the box and a document
+renders without you supplying a single font byte:
+
+| Generic family | Primary | Fallback |
+|---|---|---|
+| `sans-serif` | **Inter** | Roboto |
+| `serif` | **Liberation Serif** | PT Serif |
+| `monospace` | **Fira Code** | IBM Plex Mono |
+
+All bundled faces are **SIL Open Font License 1.1**. The attribution that ships with
+the font assets is in [`assets/fonts/NOTICE.md`](crates/turbo-pdf-core/assets/fonts/NOTICE.md);
+keep it alongside the binary when you redistribute.
+
+You can still pass your own fonts (via `Fonts.load(...)` on Node or the per-render
+`fonts` argument) — caller fonts win, the bundled ones are the fallback. The browser
+split is the exception: **`turbo-html2pdf-wasm` ships lean (no fonts)** and the
+caller supplies font bytes, while **`turbo-html2pdf-wasm-fonts`** embeds the same
+default set in the `.wasm`.
 
 ---
 
@@ -145,20 +192,23 @@ render_pages(data, css, fonts):
    │  5. paginate                    ── break the galley into pages (orphans/widows,
    │                                    break rules, repeated <thead>); resolve
    │                                    running headers/footers + footnotes per page
-   ▼  emit_pdf()                     ── fragments → PDF 1.7: subset + embed fonts
+   ▼  emit_pdf()                     ── fragments → PDF: subset + embed fonts
                                         (TrueType / Type0-CFF), text, vector boxes/
-   PDF bytes                            borders, raster images, watermark
+   PDF bytes                            borders, raster images, links, watermark
 ```
 
 Layout, font shaping (`rustybuzz`), and PDF writing (`pdf-writer` + `subsetter`) are
-all native; `taffy` powers flexbox. The engine embeds no fonts and does no network
-or filesystem I/O — fonts and images are supplied by the caller.
+all native; `taffy` powers flexbox. The engine does no network or filesystem I/O —
+images are supplied by the caller, and fonts are either the bundled defaults or the
+ones you pass.
 
 **Frontends & bindings** (`packages/`, `crates/`):
-- `turbo-html2pdf` — Node native addon (`compile`/`render` → `Buffer`).
-- `turbo-html2pdf-wasm` — the same engine in the browser (WebAssembly).
+- `turbo-html2pdf` — Node native (N-API) addon (`compile`/`render` → `Buffer`).
+- `turbo-html2pdf-svg` — the same Node engine built with the `svg` feature (resvg).
+- `turbo-html2pdf-wasm` / `-wasm-fonts` — the engine in the browser (WebAssembly),
+  lean or with the default fonts embedded.
 - `turbo-html2pdf-react` — author templates as React components (compiled to the
-  template string at build time, never on the render path).
+  template string at authoring time, never on the render path).
 - `turbo-html2pdf-template` — author templates with plain functions (no React).
 
 The engine is `Send + Sync`: one compiled `Program` renders concurrently across
@@ -183,72 +233,100 @@ Full reference in [`docs/`](docs/): [`dsl.md`](docs/dsl.md),
     `<t:page/>` / `<t:pages/>`) are correct.
   - `<t:footnote>` — auto-numbered footnotes; the body lands on the page where the
     reference falls (content-driven, with a body/footnote fix-point).
+  - `<t:anchor name="…">` — a named cross-reference target (see Internal links).
   - Pagination is automatic: **page count is an output, never an input.** `@page`
     sets size/margins; break rules + orphans/widows are honored; `<thead>` repeats
     when a table spans pages.
 
 ```js
 const { compile, Fonts } = require('turbo-html2pdf')
-const fs = require('node:fs')
 
 // Warm at startup, reuse per request — the fast path.
+// No fonts needed: sans-serif/serif/monospace resolve to the bundled defaults.
 const program = compile('<h1>{{ title }}</h1><p>{{ body }}</p>')
-const fonts = Fonts.load([fs.readFileSync('Inter.ttf')])   // parse fonts ONCE
 
 const { pdf, pageCount } = program.render({
   data: { title: 'Hello', body: 'World' },
   css: '@page { size: A4; margin: 20mm } h1 { font-size: 24pt }',
   meta: { title: 'My Doc' },
-}, fonts)                                                   // reuse the handle
+})
 
-fs.writeFileSync('out.pdf', pdf)   // %PDF-1.7
+require('node:fs').writeFileSync('out.pdf', pdf)
+
+// Bring your own fonts (parsed ONCE, reused per request) when you need them:
+const fonts = Fonts.load([require('node:fs').readFileSync('Inter.ttf')])
+program.render({ data, css, meta }, fonts)   // caller fonts win over the defaults
 ```
+
+---
+
+## Conformance & security
+
+PDF/A, PDF/UA, CMYK and encryption are **per-render options** on the `render` call.
+They are **off by default**, so the default output is byte-deterministic plain RGB,
+untagged, screen-targeted. Turn one on only when you need it — each changes the
+output:
+
+| Option | What it does |
+|---|---|
+| **`pdfA: true`** | Emit **PDF/A-2b** (archival): embedded sRGB ICC `OutputIntent` + XMP metadata, no transparency. Validates green under veraPDF `--flavour 2b`. |
+| **`pdfUa: true`** | Emit **PDF/UA-1** (tagged / accessible): `StructTreeRoot` + marked content (headings/lists/tables, `<img alt>`, reading order) + `ToUnicode` maps for screen readers. Validates green under veraPDF `--flavour ua1`. |
+| **`cmyk: true`** | Emit **DeviceCMYK** colour for a real press. Default is DeviceRGB (right for screen). |
+| **`encrypt: { … }`** | **AES-256 password protection** — PDF 2.0 Standard Security Handler V5/R6 (AESV3). Takes user/owner passwords; output is intentionally **non-deterministic** when a password is set. |
+
+```js
+// archival + accessible + print colour:
+program.render({ data, css, pdfA: true, pdfUa: true, cmyk: true })
+
+// password-protected (AES-256):
+program.render({
+  data, css,
+  encrypt: { userPassword: 'open-me', ownerPassword: 'owner-secret' },
+})
+```
+
+> Off by default = the plain-RGB, untagged output is byte-identical across runs.
+> Each toggle changes the bytes; encryption deliberately randomizes them.
 
 ---
 
 ## Features
 
 - HTML + CSS subset (block / inline / flexbox / tables), automatic pagination.
+- **Bundled default fonts** (Node + Python) — `sans-serif` / `serif` / `monospace`
+  resolve with zero caller fonts (SIL OFL 1.1; see
+  [`assets/fonts/NOTICE.md`](crates/turbo-pdf-core/assets/fonts/NOTICE.md)).
 - Running headers & footers with per-page values; auto-numbered footnotes.
 - Font subsetting + embedding (TrueType & CFF/OpenType); per-glyph fallback.
-- Raster images (PNG/JPEG, alpha → SMask) with a sane max-size clamp.
-- Watermarks: out-of-the-box faded diagonal **DRAFT** text (word/colour/angle
-  configurable) and background-image watermarks.
+- Raster images (PNG/JPEG, alpha → SMask) with a sane max-size clamp; optional SVG
+  via the `turbo-html2pdf-svg` build (resvg).
+- **Internal links & cross-references**, **watermarks**, **append/merge**, and the
+  **PDF/A · PDF/UA · CMYK · AES-256** per-render toggles (above).
 - Deterministic output; `Send + Sync`; no network / no system fonts.
 
-### Built-in capabilities (on by default)
+### Internal links & cross-references
 
-These are compiled into the **published packages** — no special build, no rebuild.
-They cost nothing until used (a doc that has no `<t:endnote>` pays nothing for
-endnotes, etc.).
+Mark a spot in the document and link to it — clickable in the PDF (a `GoTo`
+destination + a `Link` annotation):
 
-| Capability | How to use it |
-|---|---|
-| **Internal links & cross-references** | Mark a spot with `<t:anchor name="ch2"/>`; link to it with `<a href="#ch2">see Chapter 2</a>` → clickable, jumps there in the PDF. |
-| **Endnotes** | `<t:endnote>…note body…</t:endnote>` drops a numbered marker and collects the note; `<t:endnotes/>` renders the collected list at its position. |
-| **PDF/A-2b (archival)** | Request it on the render options (`pdfA: true`) → the document is emitted PDF/A-2b conformant (embedded sRGB ICC, XMP, no transparency). Validates green under veraPDF `--flavour 2b`. |
-| **PDF/UA (accessible / tagged)** | Request it on the render options (`pdfUa: true`) → adds the tagged structure tree (headings/lists/tables, `<img alt>`, reading order) for screen readers. |
-| **CMYK print color** | Request it on the render options (`cmyk: true`) → output is emitted in DeviceCMYK for a real press. **Default is RGB** (right for screen). |
-
-> PDF/A, PDF/UA and CMYK are **modes you opt into per render** (they change the
-> output); they're *available* by default but only *active* when you ask — the
-> default stays screen-friendly RGB, no transparency restrictions, untagged.
-> Endnotes and links just work from the markup, no option needed.
-
-### Opt-in: SVG images
-
-SVG vector images (`<img>`/`background-image`) are **off by default to keep the
-download small** — SVG pulls in the [`resvg`](https://crates.io/crates/resvg)
-rasterizer (a few MB), which matters most for the bundle. Everything else (PNG/JPEG,
-all layout) works without it. **Need SVG? Just install the SVG-enabled package** —
-same API, prebuilt with resvg, no build step:
-
-```bash
-npm i turbo-html2pdf        # default — small, no SVG
-npm i turbo-html2pdf-svg    # identical API, SVG support baked in (resvg)
+```html
+<t:anchor name="ch2"/>
+...
+<a href="#ch2">see Chapter 2</a>
 ```
 
-(Rust users: enable the feature directly — `turbo-pdf-core = { features = ["svg"] }`.)
+### Append / merge
+
+Glue an **existing external PDF after the rendered pages** — e.g. attach a
+government-certified document (a CFDI/DSNE) so the rendered cover/body and the
+certified PDF arrive as one file:
+
+```js
+program.render({
+  data, css,
+  append: existingPdfBytes,   // appended after the rendered pages
+})
+```
 
 ### Watermarks
 
@@ -256,16 +334,13 @@ A watermark is a **render option** — it paints behind the page body on every p
 Two kinds:
 
 - **Text** — a faded, rotated word. Out-of-the-box `DRAFT` (gray, 25% opacity, 45°),
-  or any word/colour/opacity/angle. The word is shaped + embedded from one of the
-  fonts you pass.
+  or any word/colour/opacity/angle. The word is shaped + embedded from a bundled or
+  caller-supplied font.
 - **Image** — a raster image behind the body, centered or tiled, at a chosen opacity.
 
 ```js
-// DRAFT stamp (uses the first provided font), via the render options:
-program.render({
-  data, css, fonts: [draftFont],
-  watermark: { text: 'DRAFT' },                         // defaults: gray, 25%, 45°
-})
+// DRAFT stamp, via the render options:
+program.render({ data, css, watermark: { text: 'DRAFT' } })  // gray, 25%, 45°
 
 // fully custom text:
 watermark: { text: 'CONFIDENTIAL', color: '#cc0000', opacity: 0.15, angle: 30 }
@@ -274,19 +349,34 @@ watermark: { text: 'CONFIDENTIAL', color: '#cc0000', opacity: 0.15, angle: 30 }
 watermark: { image: 'logo', tiled: true, opacity: 0.08 }
 ```
 
-In Rust the same lives on `EmitOptions.watermark` (`Watermark::Text(TextWatermark)` /
-`Watermark::Image(ImageWatermark)`; `TextWatermark::draft(face)` is the preset).
+In Rust the watermark lives on `EmitOptions.watermark`
+(`Watermark::Text(TextWatermark)` / `Watermark::Image(ImageWatermark)`;
+`TextWatermark::draft(face)` is the preset).
 
-> The watermark **render option** in the JS/WASM/Python bindings ships in `v0.1.1`
-> (the engine has had it since the PDF emitter; the bindings just expose it).
+### Opt-in: SVG images
+
+SVG vector images (`<img>` / `background-image`) are **off in the default build to
+keep the download small** — SVG pulls in the [`resvg`](https://crates.io/crates/resvg)
+rasterizer (a few MB). Everything else (PNG/JPEG, all layout) works without it.
+**Need SVG? Install the SVG-enabled package** — same API, prebuilt with resvg, no
+build step:
+
+```bash
+npm i turbo-html2pdf        # default — small, no SVG
+npm i turbo-html2pdf-svg    # identical API, SVG support baked in (resvg)
+```
+
+(Rust users: enable the feature directly — `turbo-pdf-core = { features = ["svg"] }`.)
 
 ## Status
 
-`v0.1.0`. The core engine is complete and heavily tested (the `turbo-pdf-core`
-crate holds 100% line coverage with a cyclomatic-complexity ≤ 5 gate). Bindings:
-Node (napi) and WebAssembly. See [`docs/`](docs/) for the full guide and
+**`v0.1.1`** on npm and PyPI. The core engine is complete and heavily tested (the
+`turbo-pdf-core` crate holds 100% line coverage with a cyclomatic-complexity ≤ 5
+gate). Bindings: Node (N-API), WebAssembly (lean + fonts), and Python (PyO3). See
+[`docs/`](docs/) for the full guide and
 [`benches/competitive/`](benches/competitive/) for the benchmark harness.
 
 ## License
 
-MIT.
+MIT (engine + bindings). Bundled fonts are SIL OFL 1.1 — see
+[`assets/fonts/NOTICE.md`](crates/turbo-pdf-core/assets/fonts/NOTICE.md).

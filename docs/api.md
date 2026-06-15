@@ -65,10 +65,19 @@ interface Program {
 interface RenderOptions {
   data?: unknown      // interpolated into the body
   css?: string        // author CSS; also supplies @page geometry
-  fonts?: Buffer[]    // raw OpenType/TrueType bytes, one Buffer per face
-  images?: Buffer[]   // accepted but NOT yet embedded (Phase 9b no-op)
+  fonts?: Buffer[]    // extra OpenType/TrueType bytes; the default sans/serif/mono fonts are bundled
+  images?: Buffer[]   // raster images (PNG/JPEG) referenced by name
   meta?: DocMeta
   now?: number        // pins now() (Unix seconds) for determinism
+
+  // --- per-render output toggles (all off by default → deterministic plain RGB) ---
+  pdfA?: boolean      // PDF/A-2b archival (sRGB OutputIntent + XMP)
+  pdfUa?: boolean     // PDF/UA-1 tagged / accessible (StructTreeRoot + marked content + ToUnicode)
+  cmyk?: boolean      // DeviceCMYK output for print
+  encrypt?: { userPassword?: string; ownerPassword?: string }  // AES-256 (V5/R6, AESV3); non-deterministic
+  append?: Buffer     // glue an existing PDF after the rendered pages
+  watermark?: { text: string; color?: string; opacity?: number; angle?: number }
+              | { image: string; tiled?: boolean; opacity?: number }
 }
 
 interface RenderResult {

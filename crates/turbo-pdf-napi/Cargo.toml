@@ -14,7 +14,15 @@ rust-version.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-turbo-pdf-core = { path = "../turbo-pdf-core" }
+turbo-pdf-core = { path = "../turbo-pdf-core", features = [
+    "endnotes",
+    "xref",
+    "pdf-a",
+    "pdf-ua",
+    "print-color",
+    "append",
+    "encrypt",
+] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 # napi-rs front-end (native addon). `napi6` matches turbo-dom's ABI baseline.

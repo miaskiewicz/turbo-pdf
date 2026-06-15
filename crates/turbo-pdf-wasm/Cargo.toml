@@ -21,7 +21,15 @@ crate-type = ["cdylib", "rlib"]
 # bytes at runtime via the existing `fonts` API. The batteries-included variant
 # ships as a SEPARATE package (`turbo-html2pdf-wasm-fonts`) built with the
 # `bundled-fonts` feature below.
-turbo-pdf-core = { path = "../turbo-pdf-core", default-features = false }
+turbo-pdf-core = { path = "../turbo-pdf-core", default-features = false, features = [
+    "endnotes",
+    "xref",
+    "pdf-a",
+    "pdf-ua",
+    "print-color",
+    "append",
+    "encrypt",
+] }
 wasm-bindgen = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

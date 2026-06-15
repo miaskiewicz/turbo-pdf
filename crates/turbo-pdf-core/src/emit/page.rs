@@ -99,14 +99,10 @@ fn paint_watermark(
         return;
     };
     #[cfg(feature = "pdf-ua")]
-    if tagged {
-        super::ua::begin_artifact(content);
-    }
+    super::ua::begin_watermark_artifact(content, tagged);
     watermark::paint(content, mark, page, fonts, images, cmyk, fade);
     #[cfg(feature = "pdf-ua")]
-    if tagged {
-        content.end_marked_content();
-    }
+    super::ua::end_watermark_artifact(content, tagged);
 }
 
 /// Paint every band of a page in back-to-front order. Without `pdf-ua` the band

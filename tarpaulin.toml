@@ -49,6 +49,14 @@ exclude-files = [
     # with real default coverage, so it cannot be file-excluded; its gated lines
     # simply are not compiled by default and never enter the report.
     "crates/turbo-pdf-core/src/emit/xref.rs",
+    # `xref` box-generation helpers (anchor names + internal link hrefs) live in
+    # this gated-only sibling of boxgen.rs (declared `#[cfg(feature = "xref")]
+    # #[path = "boxgen_xref.rs"] mod xref;`), so the default build does not compile
+    # it — same as emit/xref.rs above. boxgen.rs itself carries real default
+    # coverage; only these gated branches were relocated here so a tarpaulin cfg
+    # quirk cannot flag their (uncompiled) let-else arms. Exercised by the
+    # `--features xref` tests in tests/xref.rs.
+    "crates/turbo-pdf-core/src/layout/boxgen_xref.rs",
     # Opt-in `pdf-a` feature (Phase 15b, AC-11.2: PDF/A-2b archival conformance);
     # off in normal builds — the whole module is behind `#[cfg(feature =
     # "pdf-a")]`, so it is not compiled under default features and never enters
@@ -71,6 +79,14 @@ exclude-files = [
     # report.)
     "crates/turbo-pdf-core/src/emit/ua.rs",
     "crates/turbo-pdf-core/src/emit/tounicode.rs",
+    # `pdf-ua` role derivation from the semantic HTML tag lives in this gated-only
+    # sibling of boxgen.rs (declared `#[cfg(feature = "pdf-ua")] #[path =
+    # "boxgen_ua.rs"] mod ua;`), so the default build does not compile it — same as
+    # emit/ua.rs above. boxgen.rs itself carries real default coverage; only this
+    # gated `role_of` branch was relocated here so a tarpaulin cfg quirk cannot
+    # flag its (uncompiled) let-else arm. Exercised by the `--features pdf-ua`
+    # tests in tests/pdf_ua.rs.
+    "crates/turbo-pdf-core/src/layout/boxgen_ua.rs",
     # Opt-in `encrypt` feature (Phase 15b): AES-256 PDF password protection. Off
     # in normal builds — the module and its crypto deps are not compiled under
     # default features (same as perf.rs / endnotes.rs), so it is not in the

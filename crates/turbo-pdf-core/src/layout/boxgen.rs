@@ -188,27 +188,16 @@ fn directive_level(kind: TKind, el: &StyledElement, ids: &mut Ids) -> Level {
             node_id: ids.alloc(),
             kind,
             #[cfg(feature = "xref")]
-            anchor: anchor_name(kind, el),
+            anchor: xref::anchor_name(kind, el),
         }])
     } else {
         Level::Block(build_block_box(el, ids))
     }
 }
 
-/// The destination name of a `<t:anchor name="x">`, or `None` (`xref` feature).
-#[cfg(feature = "xref")]
-fn anchor_name(kind: TKind, el: &StyledElement) -> Option<String> {
-    if !matches!(kind, TKind::Anchor) {
-        return None;
-    }
-    attr_value(&el.attrs, "name")
-        .filter(|n| !n.is_empty())
-        .map(str::to_string)
-}
-
 fn classify_html(el: &StyledElement, ids: &mut Ids) -> Option<Level> {
     #[cfg(feature = "xref")]
-    if internal_link_href(el).is_some() {
+    if xref::internal_link_href(el).is_some() {
         // An `<a href="#name">` is laid out as an atomic inline box so it carries
         // its own fragment (and thus a link rectangle) through layout (AC-3.25).
         return Some(Level::Inline(vec![InlineItem::Atomic(build_block_box(
@@ -223,20 +212,6 @@ fn classify_html(el: &StyledElement, ids: &mut Ids) -> Option<Level> {
         ))])),
         _ => Some(Level::Block(build_block_box(el, ids))),
     }
-}
-
-/// The bare `#name` destination of an `<a href="#name">`, or `None` for any other
-/// element or a non-internal `href` (`xref` feature, AC-3.25).
-#[cfg(feature = "xref")]
-fn internal_link_href(el: &StyledElement) -> Option<String> {
-    let Tag::Html(name) = &el.tag else {
-        return None;
-    };
-    if name != "a" {
-        return None;
-    }
-    let target = attr_value(&el.attrs, "href")?.strip_prefix('#')?;
-    (!target.is_empty()).then(|| target.to_string())
 }
 
 fn classify(node: &StyledNode, parent_style: &ComputedStyle, ids: &mut Ids) -> Option<Level> {
@@ -476,63 +451,15 @@ pub fn build_box_tree(styled: &[StyledNode]) -> LayoutBox {
 }
 
 /// PDF/UA role derivation from the semantic HTML tag (`pdf-ua` feature, AC-11.1).
+/// The gated-only body lives in its own module file so its branches stay out of
+/// the default coverage surface; exercised by the `--features pdf-ua` tests.
 #[cfg(feature = "pdf-ua")]
-mod ua {
-    use crate::layout::fragment::UaRole;
-    use crate::node::Tag;
-    use crate::style::StyledElement;
+#[path = "boxgen_ua.rs"]
+mod ua;
 
-    /// The structure role for a styled element's HTML tag, or `None` for tags
-    /// that are transparent to tagging (their content attaches to an ancestor).
-    pub(super) fn role_of(el: &StyledElement) -> Option<UaRole> {
-        let Tag::Html(name) = &el.tag else {
-            return None;
-        };
-        role_for_tag(name)
-    }
-
-    /// Map a lowercase HTML tag name to its structure role.
-    fn role_for_tag(name: &str) -> Option<UaRole> {
-        if let Some(level) = heading_level(name) {
-            return Some(UaRole::Heading(level));
-        }
-        Some(match name {
-            "p" => UaRole::Paragraph,
-            "ul" | "ol" => UaRole::List,
-            "li" => UaRole::ListItem,
-            "table" => UaRole::Table,
-            "tr" => UaRole::TableRow,
-            "th" => UaRole::TableHeader,
-            "td" => UaRole::TableData,
-            "img" => UaRole::Figure,
-            "span" | "a" | "em" | "strong" | "b" | "i" => UaRole::Span,
-            "div" | "section" | "article" | "header" | "footer" | "main" | "nav" | "aside" => {
-                UaRole::Group
-            }
-            _ => return None,
-        })
-    }
-
-    /// The 1-based heading level of `h1`..`h6`, or `None`.
-    fn heading_level(name: &str) -> Option<u8> {
-        let level = name.strip_prefix('h')?.parse::<u8>().ok()?;
-        (1..=6).contains(&level).then_some(level)
-    }
-
-    /// The `alt` text of an `<img>` (empty allowed: an empty `/Alt` is valid and
-    /// marks the figure as decorative-with-no-description for readers).
-    pub(super) fn alt_of(el: &StyledElement) -> Option<String> {
-        match &el.tag {
-            Tag::Html(name) if name == "img" => Some(alt_attr(el).unwrap_or("").to_string()),
-            _ => None,
-        }
-    }
-
-    /// The `alt` attribute value of a styled element, if present.
-    fn alt_attr(el: &StyledElement) -> Option<&str> {
-        el.attrs
-            .iter()
-            .find(|a| a.name == "alt")
-            .map(|a| a.value.as_str())
-    }
-}
+/// `xref`-feature box-generation helpers (anchor names + internal link hrefs,
+/// AC-3.25). The gated-only body lives in its own module file so its branches
+/// stay out of the default coverage surface; exercised by `--features xref`.
+#[cfg(feature = "xref")]
+#[path = "boxgen_xref.rs"]
+mod xref;

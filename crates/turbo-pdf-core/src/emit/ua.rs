@@ -94,6 +94,22 @@ pub(super) fn begin_artifact(content: &mut Content) {
     content.begin_marked_content(Name(b"Artifact"));
 }
 
+/// Open an `/Artifact` bracket around the watermark when this render is tagged
+/// (`tagged`); a no-op otherwise. Paired with [`end_watermark_artifact`].
+pub(super) fn begin_watermark_artifact(content: &mut Content, tagged: bool) {
+    if tagged {
+        begin_artifact(content);
+    }
+}
+
+/// Close the watermark's `/Artifact` bracket opened by
+/// [`begin_watermark_artifact`] when this render is tagged; a no-op otherwise.
+pub(super) fn end_watermark_artifact(content: &mut Content, tagged: bool) {
+    if tagged {
+        content.end_marked_content();
+    }
+}
+
 /// Begin a `/P <</MCID n>> BDC` marked content sequence. The tag is always `/P`
 /// in the content stream; the real role lives on the struct element the MCID
 /// resolves to via the parent tree.

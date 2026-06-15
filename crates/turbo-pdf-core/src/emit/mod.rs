@@ -31,7 +31,7 @@ mod page;
 mod pdfa;
 mod text;
 #[cfg(feature = "pdf-ua")]
-mod tounicode;
+pub(crate) mod tounicode;
 #[cfg(feature = "pdf-ua")]
 mod ua;
 mod unit;

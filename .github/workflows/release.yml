@@ -40,7 +40,6 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu }
-          - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl }
           - { os: ubuntu-latest,  target: aarch64-unknown-linux-gnu }
           - { os: macos-latest,   target: aarch64-apple-darwin }
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
@@ -60,10 +59,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      - name: Linux musl deps
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
 
       - name: Linux aarch64 cross toolchain
         if: matrix.target == 'aarch64-unknown-linux-gnu'
@@ -90,6 +85,44 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: napi-bindings-${{ matrix.target }}
+          path: crates/turbo-pdf-napi/*.node
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # 1b. Build the musl napi binary in a REAL musl (Alpine) container.
+  #     The glibc matrix above CANNOT produce a musl binary: passing
+  #     `--target x86_64-unknown-linux-musl` on a glibc runner only renames the
+  #     output — host gcc still links glibc, so the `.node` carries the
+  #     `ld-linux-x86-64.so.2` loader + GLIBC_* symbols and dies on Alpine with
+  #     ERR_DLOPEN_FAILED. (Every v0.1.0–v0.1.4 musl artifact was this fake-musl.)
+  #     Building inside napi-rs's musl image links real musl. The load+render
+  #     smoke step runs on musl Node, so a glibc-linked binary fails here exactly
+  #     like production and blocks the publish — fake-musl can never ship again.
+  # ---------------------------------------------------------------------------
+  build-napi-musl:
+    name: build turbo-html2pdf x86_64-unknown-linux-musl
+    runs-on: ubuntu-latest
+    container: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trust the workspace (container runs as root)
+        run: git config --global --add safe.directory '*'
+      - name: Enable pnpm via corepack
+        run: corepack enable
+      - name: Install JS deps (no postinstall build)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build native addon (musl)
+        working-directory: crates/turbo-pdf-napi
+        run: pnpm exec napi build --platform --release --target x86_64-unknown-linux-musl
+      - name: Smoke gate — musl .node must load AND render under musl Node
+        working-directory: crates/turbo-pdf-napi
+        run: |
+          test -f turbo-pdf-napi.linux-x64-musl.node || { echo "musl .node missing"; exit 1; }
+          node -e "const m=require('./index.js'); const pdf=m.render('<p>musl smoke</p>',{css:'@page{size:120px 80px;margin:8px}',now:0}); if(!Buffer.isBuffer(pdf)||pdf.subarray(0,5).toString()!=='%PDF-'){console.error('not a PDF');process.exit(1)}; console.log('musl load+render OK',pdf.length,'bytes');"
+      - name: Upload prebuilt binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: napi-bindings-x86_64-unknown-linux-musl
           path: crates/turbo-pdf-napi/*.node
           if-no-files-found: error
 
@@ -123,7 +156,7 @@ jobs:
   # ---------------------------------------------------------------------------
   publish-napi:
     name: publish turbo-html2pdf
-    needs: [build-napi, gate]
+    needs: [build-napi, build-napi-musl, gate]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -145,6 +178,16 @@ jobs:
           DEST=crates/turbo-pdf-napi
           find artifacts -name '*.node' -exec cp {} "$DEST"/ \;
           ls -1 "$DEST"/*.node
+
+      - name: Guard — musl binary must be real musl (no glibc loader/symbols)
+        working-directory: crates/turbo-pdf-napi
+        run: |
+          f=turbo-pdf-napi.linux-x64-musl.node
+          test -f "$f" || { echo "missing $f"; exit 1; }
+          if strings -a "$f" | grep -qE 'ld-linux-x86-64\.so\.2|GLIBC_[0-9]'; then
+            echo "FAIL: $f is glibc-linked, not musl — refusing to publish"; exit 1
+          fi
+          echo "OK: $f is musl-linked"
 
       - name: Publish turbo-html2pdf
         run: npm publish --access public --ignore-scripts
@@ -298,7 +341,6 @@ jobs:
       matrix:
         include:
           - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu }
-          - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl }
           - { os: ubuntu-latest,  target: aarch64-unknown-linux-gnu }
           - { os: macos-latest,   target: aarch64-apple-darwin }
           - { os: windows-latest, target: x86_64-pc-windows-msvc }
@@ -313,9 +355,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - name: Linux musl deps
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
       - name: Linux aarch64 cross toolchain
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
@@ -340,13 +379,45 @@ jobs:
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
+  # 7b. Build the svg-enabled musl binary in a real musl (Alpine) container.
+  #     Same fake-musl trap as build-napi-musl, with `--features svg`. Smoke
+  #     gate (load + render under musl Node) blocks a glibc-linked artifact.
+  # ---------------------------------------------------------------------------
+  build-napi-svg-musl:
+    name: build turbo-html2pdf-svg x86_64-unknown-linux-musl
+    runs-on: ubuntu-latest
+    container: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trust the workspace (container runs as root)
+        run: git config --global --add safe.directory '*'
+      - name: Enable pnpm via corepack
+        run: corepack enable
+      - name: Install JS deps (no postinstall build)
+        run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Build native addon (musl, svg)
+        working-directory: crates/turbo-pdf-napi
+        run: pnpm exec napi build --platform --release --target x86_64-unknown-linux-musl --features svg
+      - name: Smoke gate — musl .node must load AND render under musl Node
+        working-directory: crates/turbo-pdf-napi
+        run: |
+          test -f turbo-pdf-napi.linux-x64-musl.node || { echo "musl .node missing"; exit 1; }
+          node -e "const m=require('./index.js'); const pdf=m.render('<p>musl svg smoke</p>',{css:'@page{size:120px 80px;margin:8px}',now:0}); if(!Buffer.isBuffer(pdf)||pdf.subarray(0,5).toString()!=='%PDF-'){console.error('not a PDF');process.exit(1)}; console.log('musl svg load+render OK',pdf.length,'bytes');"
+      - name: Upload prebuilt binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: napi-svg-bindings-x86_64-unknown-linux-musl
+          path: crates/turbo-pdf-napi/*.node
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
   # 8. Publish turbo-html2pdf-svg — the svg-enabled napi package. Mirrors
   #    publish-napi, but bundles the svg-built binaries and renames the package
   #    to turbo-html2pdf-svg before publishing (same version from package.json).
   # ---------------------------------------------------------------------------
   publish-svg:
     name: publish turbo-html2pdf-svg
-    needs: [build-napi-svg, gate]
+    needs: [build-napi-svg, build-napi-svg-musl, gate]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -370,6 +441,16 @@ jobs:
           # Same version (from package.json); only the package name changes so the
           # svg build ships under its own npm name alongside turbo-html2pdf.
           node -e "const fs=require('fs');const p='$DEST/package.json';const j=JSON.parse(fs.readFileSync(p));j.name='turbo-html2pdf-svg';fs.writeFileSync(p,JSON.stringify(j,null,2));console.log('publishing',j.name,j.version)"
+
+      - name: Guard — musl binary must be real musl (no glibc loader/symbols)
+        working-directory: crates/turbo-pdf-napi
+        run: |
+          f=turbo-pdf-napi.linux-x64-musl.node
+          test -f "$f" || { echo "missing $f"; exit 1; }
+          if strings -a "$f" | grep -qE 'ld-linux-x86-64\.so\.2|GLIBC_[0-9]'; then
+            echo "FAIL: $f is glibc-linked, not musl — refusing to publish"; exit 1
+          fi
+          echo "OK: $f is musl-linked"
 
       - name: Publish turbo-html2pdf-svg
         run: npm publish --access public --ignore-scripts

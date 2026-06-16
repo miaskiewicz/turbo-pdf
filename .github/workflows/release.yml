@@ -122,7 +122,7 @@ jobs:
         working-directory: crates/turbo-pdf-napi
         run: |
           test -f turbo-pdf-napi.linux-x64-musl.node || { echo "musl .node missing"; exit 1; }
-          node -e "const m=require('./index.js'); const pdf=m.render('<p>musl smoke</p>',{css:'@page{size:120px 80px;margin:8px}',now:0}); if(!Buffer.isBuffer(pdf)||pdf.subarray(0,5).toString()!=='%PDF-'){console.error('not a PDF');process.exit(1)}; console.log('musl load+render OK',pdf.length,'bytes');"
+          node -e "const m=require('./index.js'); const {pdf}=m.render('<p>musl smoke</p>',{css:'@page{size:120px 80px;margin:8px}',now:0}); if(!Buffer.isBuffer(pdf)||pdf.subarray(0,5).toString('latin1')!=='%PDF-'){console.error('not a PDF');process.exit(1)}; console.log('musl load+render OK',pdf.length,'bytes');"
       - name: Upload prebuilt binary
         uses: actions/upload-artifact@v4
         with:
@@ -410,7 +410,7 @@ jobs:
         working-directory: crates/turbo-pdf-napi
         run: |
           test -f turbo-pdf-napi.linux-x64-musl.node || { echo "musl .node missing"; exit 1; }
-          node -e "const m=require('./index.js'); const pdf=m.render('<p>musl svg smoke</p>',{css:'@page{size:120px 80px;margin:8px}',now:0}); if(!Buffer.isBuffer(pdf)||pdf.subarray(0,5).toString()!=='%PDF-'){console.error('not a PDF');process.exit(1)}; console.log('musl svg load+render OK',pdf.length,'bytes');"
+          node -e "const m=require('./index.js'); const {pdf}=m.render('<p>musl svg smoke</p>',{css:'@page{size:120px 80px;margin:8px}',now:0}); if(!Buffer.isBuffer(pdf)||pdf.subarray(0,5).toString('latin1')!=='%PDF-'){console.error('not a PDF');process.exit(1)}; console.log('musl svg load+render OK',pdf.length,'bytes');"
       - name: Upload prebuilt binary
         uses: actions/upload-artifact@v4
         with:

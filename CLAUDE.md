@@ -10,7 +10,7 @@ Releases are **tag-driven**. Two independent tag prefixes:
 | Tag      | Workflow             | Publishes to                                                                 |
 | -------- | -------------------- | ---------------------------------------------------------------------------- |
 | `vX.Y.Z`  | `.github/workflows/release.yml`    | **npm**: `turbo-html2pdf`, `-react`, `-template`, `-wasm`, `-wasm-fonts`, `-svg`; **GitHub Release**: `turbo-html2pdf-mcp` per-platform binary archives (`publish-mcp`) |
-| `vX.Y.Z`  | `.github/workflows/release-crates.yml` | **crates.io**: `turbo-pdf-core`, then `turbo-html2pdf-mcp` (ordered — core first). Same `v*` tag as npm |
+| `vX.Y.Z`  | `.github/workflows/release-crates.yml` | **crates.io**: `turbo-html2pdf-core`, then `turbo-html2pdf-mcp` (ordered — core first). Same `v*` tag as npm |
 | `pyvX.Y.Z`| `.github/workflows/release-py.yml` | **PyPI**: `turbo-html2pdf` (maturin abi3 wheels + sdist)                  |
 
 Required GitHub repo secrets: **`NPM_TOKEN`** (npm automation token, public
@@ -19,7 +19,7 @@ publish), **`PYPI_TOKEN`** (PyPI API token), and **`CARGO_REGISTRY_TOKEN`**
 `CARGO_REGISTRY_TOKEN` is unset the crates.io publish self-skips (verifies the
 package, uploads nothing).
 
-The `turbo-html2pdf-mcp` crate depends on `turbo-pdf-core` with an explicit
+The `turbo-html2pdf-mcp` crate depends on `turbo-html2pdf-core` with an explicit
 `version = "0.2"` (^0.2) alongside its `path` — crates.io requires a version on
 the dep. It only needs bumping on a **minor** (0.x) change, not every patch;
 keep it in sync with the workspace major.minor when you cross a minor boundary.
@@ -81,7 +81,7 @@ Watch: `gh run list`. The npm `build-napi` matrix (5 platforms) takes ~10-15 min
 Verify after: `npm view turbo-html2pdf@X.Y.Z version` and the others;
 `npm view turbo-html2pdf@X.Y.Z dist.tarball`.
 
-## Feature gates (turbo-pdf-core)
+## Feature gates (turbo-html2pdf-core)
 
 Default build = `["bundled-fonts"]` only. Everything else is opt-in and kept out
 of the default-coverage surface (gated-only modules are listed in
@@ -112,7 +112,7 @@ in-crate. It inherits the workspace version, so it needs no manual version bump.
 ## Known gaps
 
 - **`turbo-html2pdf-svg` IS published.** The napi crate carries the
-  `svg = ["turbo-pdf-core/svg"]` passthrough feature
+  `svg = ["turbo-html2pdf-core/svg"]` passthrough feature
   (`crates/turbo-pdf-napi/Cargo.toml`), and `release.yml` builds it on every
   `v*` tag via the `build-napi-svg` / `build-napi-svg-musl` jobs and ships it
   under the `turbo-html2pdf-svg` npm name from `publish-svg`. (Earlier revisions

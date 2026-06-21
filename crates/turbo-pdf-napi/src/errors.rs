@@ -7,7 +7,7 @@
 //! JS wrapper (`index.js`) detects the prefix and rethrows a typed
 //! `TurboPdfError` whose `.code` and `.span` mirror this payload.
 
-use turbo_pdf_core::{AppendError, CompileError, ErrorCode, RenderError, Span};
+use turbo_html2pdf_core::{AppendError, CompileError, ErrorCode, RenderError, Span};
 
 /// Sentinel that marks a `reason` string as a structured turbo-pdf error. The JS
 /// wrapper splits on this to recover the JSON payload.

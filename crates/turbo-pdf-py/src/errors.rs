@@ -11,7 +11,7 @@ use pyo3::exceptions::PyException;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use turbo_pdf_core::{AppendError, CompileError, ErrorCode, RenderError, Span};
+use turbo_html2pdf_core::{AppendError, CompileError, ErrorCode, RenderError, Span};
 
 create_exception!(
     turbo_html2pdf,

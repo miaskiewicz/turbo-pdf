@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use napi::bindgen_prelude::Buffer;
 use napi_derive::napi;
 
-use turbo_pdf_core::{Diagnostics, FontFace, FontRegistry, ImageResolver, Lint, LintCode};
+use turbo_html2pdf_core::{Diagnostics, FontFace, FontRegistry, ImageResolver, Lint, LintCode};
 
 /// A non-fatal diagnostic (lint) returned in the render result, never thrown.
 #[napi(object)]

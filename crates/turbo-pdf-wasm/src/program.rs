@@ -4,8 +4,8 @@
 //! `render::render_pages(&RenderInputs{ .. })` → `emit::emit_pdf(&pages, &opts)`.
 
 use serde::Deserialize;
-use turbo_pdf_core::style::{parse_stylesheet, AtRule, TokenSet};
-use turbo_pdf_core::{
+use turbo_html2pdf_core::style::{parse_stylesheet, AtRule, TokenSet};
+use turbo_html2pdf_core::{
     append_pdfs, build_cascade, compile as core_compile, emit_pdf_with_images, render_pages,
     Cascade, Diagnostics, EmitOptions, FontRegistry, ImageResolver, NoImages, RenderInputs,
 };
@@ -22,7 +22,7 @@ use crate::DEFAULT_NOW;
 /// done at compile time (§8.1).
 #[wasm_bindgen]
 pub struct Program {
-    inner: turbo_pdf_core::Program,
+    inner: turbo_html2pdf_core::Program,
 }
 
 /// JS-side per-render input:
@@ -201,8 +201,8 @@ fn merge_appended(pdf: Vec<u8>, extras: &[serde_bytes::ByteBuf]) -> Result<Vec<u
     append_pdfs(&pdf, &refs).map_err(append_error)
 }
 
-/// Translate an [`turbo_pdf_core::AppendError`] into a structured JS error value.
-fn append_error(e: turbo_pdf_core::AppendError) -> JsValue {
+/// Translate an [`turbo_html2pdf_core::AppendError`] into a structured JS error value.
+fn append_error(e: turbo_html2pdf_core::AppendError) -> JsValue {
     crate::convert::JsError::append(e.to_string()).into_jsvalue()
 }
 

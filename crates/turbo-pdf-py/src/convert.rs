@@ -5,7 +5,7 @@
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
-use turbo_pdf_core::{Diagnostics, FontFace, FontRegistry, Lint, LintCode};
+use turbo_html2pdf_core::{Diagnostics, FontFace, FontRegistry, Lint, LintCode};
 
 /// The stable string form of a [`LintCode`] (mirrors the variant name).
 fn lint_code_str(code: LintCode) -> &'static str {

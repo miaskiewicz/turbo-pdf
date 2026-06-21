@@ -1,6 +1,6 @@
 //! turbo-pdf N-API binding (Phase 10).
 //!
-//! Exposes the compile -> render -> emit pipeline of `turbo-pdf-core` to Node/JS.
+//! Exposes the compile -> render -> emit pipeline of `turbo-html2pdf-core` to Node/JS.
 //! A template is compiled once into a [`Program`] (a `Send + Sync` native handle)
 //! and rendered against data as many times as needed; a one-shot [`render`]
 //! convenience does both in a single call.
@@ -31,8 +31,8 @@ use std::sync::Arc;
 
 use std::collections::HashMap;
 
-use turbo_pdf_core::style::TokenSet;
-use turbo_pdf_core::{
+use turbo_html2pdf_core::style::TokenSet;
+use turbo_html2pdf_core::{
     append_pdfs, build_cascade, compile as core_compile, emit_pdf_with_images, render_pages,
     style::parse_stylesheet, CompileOptions, Diagnostics, EmitOptions, Encryption, FontRegistry,
     ImageWatermark, MissingPolicy, NoImages, Permissions, RenderInputs, Rgba, TextWatermark,
@@ -210,7 +210,7 @@ impl Fonts {
 /// render it against many data sets. The handle is thread-safe.
 #[napi]
 pub struct Program {
-    inner: turbo_pdf_core::Program,
+    inner: turbo_html2pdf_core::Program,
 }
 
 #[napi]
@@ -313,7 +313,7 @@ pub fn append_pdf(base: Buffer, extras: Vec<Buffer>) -> napi::Result<Buffer> {
 /// The shared render pipeline: cascade + geometry + fonts -> `render_pages` ->
 /// `emit_pdf`. Diagnostics flow into the result; only fatal faults throw.
 fn run_pipeline(
-    program: &turbo_pdf_core::Program,
+    program: &turbo_html2pdf_core::Program,
     opts: RenderOptions,
     fonts: Option<&Fonts>,
 ) -> napi::Result<RenderResult> {
@@ -393,7 +393,7 @@ fn apply_append(pdf: Vec<u8>, extras: &[Buffer]) -> napi::Result<Vec<u8>> {
 
 /// The image source for layout/emit: the caller's resolver when it carries
 /// images, else the zero-image [`NoImages`] so the no-image path is identical.
-fn image_source(resolver: &MapResolver) -> &dyn turbo_pdf_core::ImageResolver {
+fn image_source(resolver: &MapResolver) -> &dyn turbo_html2pdf_core::ImageResolver {
     if resolver.is_empty() {
         &NoImages
     } else {

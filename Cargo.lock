@@ -1728,17 +1728,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "turbo-html2pdf-mcp"
-version = "0.2.2"
-dependencies = [
- "serde",
- "serde_json",
- "turbo-pdf-core",
-]
-
-[[package]]
-name = "turbo-pdf-core"
-version = "0.2.2"
+name = "turbo-html2pdf-core"
+version = "0.2.3"
 dependencies = [
  "aes",
  "cbc",
@@ -1765,30 +1756,39 @@ dependencies = [
 ]
 
 [[package]]
+name = "turbo-html2pdf-mcp"
+version = "0.2.3"
+dependencies = [
+ "serde",
+ "serde_json",
+ "turbo-html2pdf-core",
+]
+
+[[package]]
 name = "turbo-pdf-napi"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
  "serde",
  "serde_json",
- "turbo-pdf-core",
+ "turbo-html2pdf-core",
 ]
 
 [[package]]
 name = "turbo-pdf-py"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "pyo3",
  "pythonize",
  "serde_json",
- "turbo-pdf-core",
+ "turbo-html2pdf-core",
 ]
 
 [[package]]
 name = "turbo-pdf-wasm"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "getrandom 0.2.17",
  "getrandom 0.3.4",
@@ -1797,7 +1797,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_bytes",
  "serde_json",
- "turbo-pdf-core",
+ "turbo-html2pdf-core",
  "wasm-bindgen",
 ]
 

@@ -3,7 +3,7 @@
 A native **MCP** (Model Context Protocol) server for HTML/CSS + Jinja → PDF —
 hand-rolled JSON-RPC 2.0 over stdio, no SDK — exposing the
 [turbo-html2pdf](https://github.com/miaskiewicz/turbo-html2pdf) engine as tools
-an agent can call. It drives the same `turbo-pdf-core` pipeline as the npm
+an agent can call. It drives the same `turbo-html2pdf-core` pipeline as the npm
 (N-API) and PyPI (PyO3) bindings, with the full capability surface (PDF/A,
 PDF/UA, CMYK, AES-256 encryption, watermarks, named images, foreign-PDF append,
 bundled fonts). Only `svg` is omitted, matching the standard `turbo-html2pdf`
@@ -58,7 +58,7 @@ caller-supplied faces.
    "out":"hello.pdf"}}}
 ```
 
-The server is a thin layer over `turbo-pdf-core`; all the real work — and the
+The server is a thin layer over `turbo-html2pdf-core`; all the real work — and the
 coverage gate — lives in the core. See the
 [repo](https://github.com/miaskiewicz/turbo-html2pdf) for the full option surface.
 

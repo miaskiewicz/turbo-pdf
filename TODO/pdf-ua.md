@@ -16,7 +16,7 @@ content must be wrapped in marked-content (`BDC`/`EMC`) operators and linked int
 100% coverage as a small slice.
 
 ## Where to start
-- Source hook: `crates/turbo-pdf-core/src/emit/document.rs`
+- Source hook: `crates/turbo-html2pdf-core/src/emit/document.rs`
   (`TODO(phase15b, feature "pdf-ua", AC-11.1)`).
 - Semantic info already exists upstream: the node tree (`node.rs`) and styled tree
   know the original HTML tags (`h1`, `ul`, `li`, `table`, `td`, `img alt=...`) —

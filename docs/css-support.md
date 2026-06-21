@@ -2,7 +2,7 @@
 
 turbo-html2pdf styles the document with a small, well-defined CSS subset. This page
 documents exactly what the code parses and applies, verified against
-`crates/turbo-pdf-core/src/style/` and `crates/turbo-pdf-core/src/layout/value.rs`.
+`crates/turbo-html2pdf-core/src/style/` and `crates/turbo-html2pdf-core/src/layout/value.rs`.
 Anything not listed here is **not** supported and is ignored.
 
 The internal unit is **CSS pixels at 96 dpi**. The default font size is `16px`.

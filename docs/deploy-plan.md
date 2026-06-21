@@ -15,7 +15,7 @@
 | `turbo-html2pdf-template` | `packages/template`          | pure TS (tsup → dist)   | `turbo-html2pdf` |
 
 `turbo-html2pdf` is the only package with a native component: it is the napi-rs
-front-end crate wrapping `turbo-pdf-core`, and the npm package *is* that crate
+front-end crate wrapping `turbo-html2pdf-core`, and the npm package *is* that crate
 directory (its `package.json` carries the `napi` config; `index.js` is the
 runtime loader). `react` and `template` are the existing pnpm workspace packages
 under `packages/*`; they already build with `tsup` and emit `dist/` (see their
@@ -153,7 +153,7 @@ side already has `crate-type = ["cdylib", "rlib"]` and napi deps in
 ## 3. Prerequisites — all met
 
 1. ✅ **`crates/turbo-pdf-napi` exists** (Phase 10). napi-rs front-end crate
-   wrapping `turbo-pdf-core`, `crate-type = ["cdylib", "rlib"]`. `cargo build -p
+   wrapping `turbo-html2pdf-core`, `crate-type = ["cdylib", "rlib"]`. `cargo build -p
    turbo-pdf-napi` succeeds.
 2. ✅ **`turbo-html2pdf` package manifest** — the crate dir doubles as the npm
    package (turbo-dom layout). Carries the `napi` config from §2.5,

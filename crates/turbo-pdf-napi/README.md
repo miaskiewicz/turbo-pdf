@@ -111,7 +111,7 @@ Numbers are "on this machine", never absolutes — rerun with `cd benches/compet
 ## Architecture
 
 A template is **compiled once** into a reusable `Program`, then rendered against
-data many times. The pipeline (`crates/turbo-pdf-core`):
+data many times. The pipeline (`crates/turbo-html2pdf-core`):
 
 ```
 template (HTML + Jinja + t: directives)
@@ -201,7 +201,7 @@ fs.writeFileSync('out.pdf', pdf)   // %PDF-1.7
 
 ## Status
 
-`v0.2.2`. The core engine is complete and heavily tested (the `turbo-pdf-core`
+`v0.2.3`. The core engine is complete and heavily tested (the `turbo-html2pdf-core`
 crate holds 100% line coverage with a cyclomatic-complexity ≤ 5 gate). Bindings:
 Node (napi) and WebAssembly. See [`docs/`](https://github.com/miaskiewicz/turbo-html2pdf/blob/main/docs/) for the full guide and
 [`benches/competitive/`](https://github.com/miaskiewicz/turbo-html2pdf/blob/main/benches/competitive/) for the benchmark harness.

@@ -1,6 +1,6 @@
 //! turbo-pdf PyO3 binding (PyPI: `turbo-html2pdf`).
 //!
-//! Exposes the compile -> render -> emit pipeline of `turbo-pdf-core` to Python,
+//! Exposes the compile -> render -> emit pipeline of `turbo-html2pdf-core` to Python,
 //! mirroring the Node N-API binding 1:1. A template is compiled once into a
 //! [`Program`] (a `Send + Sync` native handle) and rendered against data as many
 //! times as needed; a one-shot [`render`] convenience does both in a single call.
@@ -29,8 +29,8 @@ use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict, PyList};
 use serde_json::Value;
 
-use turbo_pdf_core::style::{parse_stylesheet, TokenSet};
-use turbo_pdf_core::{
+use turbo_html2pdf_core::style::{parse_stylesheet, TokenSet};
+use turbo_html2pdf_core::{
     append_pdfs, build_cascade, compile as core_compile, emit_pdf, render_pages, CompileOptions,
     Diagnostics, EmitOptions, Encryption, FontRegistry, Permissions, RenderInputs,
 };
@@ -63,7 +63,7 @@ impl Fonts {
 /// render it against many data sets. The handle is thread-safe.
 #[pyclass(frozen, module = "turbo_html2pdf")]
 pub struct Program {
-    inner: turbo_pdf_core::Program,
+    inner: turbo_html2pdf_core::Program,
 }
 
 #[pymethods]
@@ -343,7 +343,7 @@ fn data_value(data: Option<Bound<'_, PyAny>>) -> PyResult<Value> {
 /// `emit_pdf`. Diagnostics flow into the result; only fatal faults raise.
 fn run_pipeline(
     py: Python<'_>,
-    program: &turbo_pdf_core::Program,
+    program: &turbo_html2pdf_core::Program,
     opts: RenderArgs,
     append: Option<Vec<Vec<u8>>>,
 ) -> PyResult<RenderOutput> {
@@ -357,7 +357,7 @@ fn run_pipeline(
         fonts: &opts.registry,
         // Image embedding (§7.4) is not yet surfaced through the Python binding;
         // the `images` arg is accepted so the API is stable but has no effect.
-        images: &turbo_pdf_core::NoImages,
+        images: &turbo_html2pdf_core::NoImages,
         now: opts.now,
     };
 
@@ -431,11 +431,11 @@ fn opt_bool_key(m: &Bound<'_, PyDict>, key: &str) -> PyResult<Option<bool>> {
 }
 
 /// Glue each foreign PDF blob after `base`, page by page. A parse failure becomes
-/// an [`turbo_pdf_core::AppendError`]; with no extras `base` is returned as-is.
+/// an [`turbo_html2pdf_core::AppendError`]; with no extras `base` is returned as-is.
 fn merge_appended(
     base: Vec<u8>,
     extras: &[Vec<u8>],
-) -> Result<Vec<u8>, turbo_pdf_core::AppendError> {
+) -> Result<Vec<u8>, turbo_html2pdf_core::AppendError> {
     if extras.is_empty() {
         return Ok(base);
     }

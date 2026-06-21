@@ -374,7 +374,7 @@ jobs:
       - name: Install JS deps (no postinstall build)
         run: pnpm install --frozen-lockfile --ignore-scripts
       # `--features svg` forwards to cargo, turning on the napi crate's svg
-      # passthrough (= turbo-pdf-core/svg). Same suffixed *.node filename.
+      # passthrough (= turbo-html2pdf-core/svg). Same suffixed *.node filename.
       - name: Build native addon (turbo-html2pdf-svg)
         working-directory: crates/turbo-pdf-napi
         run: pnpm exec napi build --platform --release --target ${{ matrix.target }} --features svg

@@ -12,7 +12,7 @@ For paged-media features (running headers/footers, footnotes, pagination) see
 [api.md](api.md).
 
 > **Accuracy note.** Everything here is verified against the source and the test
-> suite (`crates/turbo-pdf-core/tests/`). Examples are taken from working tests.
+> suite (`crates/turbo-html2pdf-core/tests/`). Examples are taken from working tests.
 > Where the [spec](spec.md) describes features the current code does not yet
 > implement, those are flagged as *deferred* and not documented as working.
 
@@ -21,7 +21,7 @@ For paged-media features (running headers/footers, footnotes, pagination) see
 ## 1. The Jinja base (MiniJinja)
 
 The template engine is MiniJinja, configured at compile time in
-`crates/turbo-pdf-core/src/template/mod.rs`:
+`crates/turbo-html2pdf-core/src/template/mod.rs`:
 
 - **Auto-escaping is on** (HTML). Interpolated values are HTML-escaped, so
   `{{ '<b>' }}` renders `&lt;b&gt;`. Use the `| safe` filter to emit raw markup:
@@ -107,7 +107,7 @@ Inside a **running header/footer region**, the data is nested under `data`
 ## 2. The `{% switch %}` extension
 
 turbo-html2pdf adds a `{% switch %}` / `{% case %}` / `{% default %}` block on top of
-MiniJinja (`crates/turbo-pdf-core/src/template/switch.rs`). It is a compile-time
+MiniJinja (`crates/turbo-html2pdf-core/src/template/switch.rs`). It is a compile-time
 desugaring into `{% if %}` / `{% elif %}` / `{% else %}`, so it has standard
 Jinja semantics underneath.
 
@@ -147,7 +147,7 @@ Rules (all enforced and tested):
 ## 3. Document-domain filters
 
 These filters are registered in addition to the MiniJinja built-ins
-(`crates/turbo-pdf-core/src/template/filters.rs`). Every example below is a
+(`crates/turbo-html2pdf-core/src/template/filters.rs`). Every example below is a
 verbatim test assertion.
 
 ### `currency(value, ccy, locale="en")`

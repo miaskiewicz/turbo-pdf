@@ -3,10 +3,10 @@
 #
 # On a `v*` tag (the SAME tag as the npm release; first: v0.1.0) this publishes,
 # IN ORDER:
-#   1. turbo-pdf-core      — the pure-Rust HTML/CSS+Jinja → PDF engine
+#   1. turbo-html2pdf-core      — the pure-Rust HTML/CSS+Jinja → PDF engine
 #   2. turbo-html2pdf-mcp  — the MCP server binary (`cargo install turbo-html2pdf-mcp`)
 #
-# Order matters: the mcp crate depends on turbo-pdf-core from the registry, so
+# Order matters: the mcp crate depends on turbo-html2pdf-core from the registry, so
 # core must land first. `cargo publish` blocks until the just-published crate is
 # available in the index before returning, so the sequential publish resolves.
 #
@@ -40,11 +40,11 @@ jobs:
 
       # Verify the core crate packages + verify-builds cleanly BEFORE touching
       # the token — a bad package fails here, not half-way through publishing.
-      # The mcp crate can NOT be packaged here: it depends on turbo-pdf-core from
+      # The mcp crate can NOT be packaged here: it depends on turbo-html2pdf-core from
       # the registry, which is not published until the step below. `cargo publish`
       # runs its own verify build for mcp, by then core is live in the index.
       - name: Package core (dry-run verify)
-        run: cargo package -p turbo-pdf-core
+        run: cargo package -p turbo-html2pdf-core
 
       - name: Guard on CARGO_REGISTRY_TOKEN
         id: guard
@@ -59,14 +59,35 @@ jobs:
           fi
 
       # core first — cargo publish waits for it to hit the index before returning.
-      - name: Publish turbo-pdf-core
+      # Idempotent: `cargo publish` uploads, then POLLS the index for availability;
+      # that poll can hit a transient crates.io CDN/HTTP2 blip and exit non-zero
+      # AFTER the upload already succeeded. So treat an "already exists/uploaded"
+      # (or post-upload wait) failure as success — a re-run then proceeds to mcp
+      # instead of being blocked. A genuine pre-upload failure still fails loudly.
+      - name: Publish turbo-html2pdf-core
         if: steps.guard.outputs.publish == 'true'
-        run: cargo publish -p turbo-pdf-core
+        run: |
+          set +e
+          out=$(cargo publish -p turbo-html2pdf-core 2>&1); code=$?
+          echo "$out"
+          [ $code -eq 0 ] && exit 0
+          echo "$out" | grep -qiE 'already (exists|uploaded)|crate version .* is already' \
+            && { echo "core already on crates.io — continuing"; exit 0; }
+          echo "$out" | grep -qiE 'waiting for|Uploaded turbo-html2pdf-core' \
+            && { echo "core uploaded; index-wait was the only failure — continuing"; exit 0; }
+          exit $code
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
       - name: Publish turbo-html2pdf-mcp
         if: steps.guard.outputs.publish == 'true'
-        run: cargo publish -p turbo-html2pdf-mcp
+        run: |
+          set +e
+          out=$(cargo publish -p turbo-html2pdf-mcp 2>&1); code=$?
+          echo "$out"
+          [ $code -eq 0 ] && exit 0
+          echo "$out" | grep -qiE 'already (exists|uploaded)|crate version .* is already' \
+            && { echo "mcp already on crates.io — continuing"; exit 0; }
+          exit $code
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

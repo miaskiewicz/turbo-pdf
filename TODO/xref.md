@@ -13,9 +13,9 @@ layout → pagination, so at emit time the engine doesn't know *where on which p
 an anchor landed, nor which rectangle a link should cover.
 
 ## Where to start
-- Source hook: `crates/turbo-pdf-core/src/emit/document.rs` (top-of-file
+- Source hook: `crates/turbo-html2pdf-core/src/emit/document.rs` (top-of-file
   `TODO(phase15b, feature "xref", AC-3.25)`).
-- `crates/turbo-pdf-core/src/node.rs` — `TKind::Anchor` already exists.
+- `crates/turbo-html2pdf-core/src/node.rs` — `TKind::Anchor` already exists.
 
 ## What's needed
 1. Thread an optional `anchor: Option<String>` (from `<t:anchor name>`) and
@@ -26,7 +26,7 @@ an anchor landed, nor which rectangle a link should cover.
      `Dests` name tree (PDF named destinations).
    - Pass 2: for each `<a href="#name">` fragment, write a Link annotation
      (rectangle = the fragment's box) with a `GoTo` action to that dest.
-3. Add `xref = []` to `[features]` in `crates/turbo-pdf-core/Cargo.toml`.
+3. Add `xref = []` to `[features]` in `crates/turbo-html2pdf-core/Cargo.toml`.
 
 ## Acceptance
 - `--features xref`: a doc with an anchor + a link to it produces a Link

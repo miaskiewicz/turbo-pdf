@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/turbo-pdf-core",
+    "crates/turbo-html2pdf-core",
     "crates/turbo-pdf-napi",
     "crates/turbo-pdf-py",
     "crates/turbo-pdf-wasm",
@@ -9,7 +9,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.2.2"
+version = "0.2.3"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/miaskiewicz/turbo-html2pdf"

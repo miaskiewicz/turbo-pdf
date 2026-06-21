@@ -14,7 +14,7 @@ rust-version.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-turbo-pdf-core = { path = "../turbo-pdf-core", features = [
+turbo-html2pdf-core = { path = "../turbo-html2pdf-core", features = [
     "endnotes",
     "xref",
     "pdf-a",
@@ -34,7 +34,7 @@ napi-derive = "2"
 # default: the standard `turbo-html2pdf` package ships without it. The separate
 # `turbo-html2pdf-svg` package is built with `napi build --features svg` (see the
 # `build-napi-svg`/`publish-svg` jobs in .github/workflows/release.yml).
-svg = ["turbo-pdf-core/svg"]
+svg = ["turbo-html2pdf-core/svg"]
 
 [build-dependencies]
 napi-build = "2"

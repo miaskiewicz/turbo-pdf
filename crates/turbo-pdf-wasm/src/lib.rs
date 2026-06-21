@@ -19,7 +19,7 @@
 //! * the render clock — when the caller omits `now`, we pass a fixed sentinel
 //!   ([`DEFAULT_NOW`]) so `now()`/date field codes are reproducible; and
 //! * the PDF creation date — when the caller omits `meta.creationDate`, the core
-//!   emitter substitutes its own [`turbo_pdf_core::SENTINEL_DATE`].
+//!   emitter substitutes its own [`turbo_html2pdf_core::SENTINEL_DATE`].
 //!
 //! With both pinned and the same fonts supplied, `program.render(...)` yields the
 //! same bytes the native `render_pages` → `emit_pdf` path produces.
@@ -36,7 +36,7 @@ pub use program::{append_pdf, compile, Program};
 /// The fixed render-clock sentinel used when the caller omits `now`
 /// (`2000-01-01T00:00:00Z`, matching the emitter's creation-date sentinel). This
 /// keeps `{{ now() }}` and date field codes reproducible across runs (AC-8.6).
-pub const DEFAULT_NOW: i64 = turbo_pdf_core::SENTINEL_DATE;
+pub const DEFAULT_NOW: i64 = turbo_html2pdf_core::SENTINEL_DATE;
 
 /// Optional async initializer. There is no module-load work to do today (the
 /// engine is pure-Rust with no global setup), but exposing `init()` lets callers

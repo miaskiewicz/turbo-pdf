@@ -30,10 +30,10 @@ path = "src/main.rs"
 # so documents render with no caller-supplied faces. Only `svg` is omitted, to
 # match the standard `turbo-html2pdf` npm package.
 # `version` (not just `path`) is REQUIRED for crates.io: the published mcp crate
-# resolves turbo-pdf-core from the registry. `"0.2"` (^0.2) tracks any 0.2.x core
+# resolves turbo-html2pdf-core from the registry. `"0.2"` (^0.2) tracks any 0.2.x core
 # so it only needs touching on a minor bump, not every patch. Keep core published
 # FIRST (the release-crates.yml job order) so this resolves.
-turbo-pdf-core = { path = "../turbo-pdf-core", version = "0.2", features = [
+turbo-html2pdf-core = { path = "../turbo-html2pdf-core", version = "0.2", features = [
     "endnotes",
     "xref",
     "pdf-a",
@@ -49,4 +49,4 @@ serde_json = { workspace = true }
 # Passthrough for the core `svg` feature (vector `<img>` via resvg). OFF by
 # default so the standard binary matches the standard `turbo-html2pdf` npm
 # package; build with `--features svg` for vector image support.
-svg = ["turbo-pdf-core/svg"]
+svg = ["turbo-html2pdf-core/svg"]

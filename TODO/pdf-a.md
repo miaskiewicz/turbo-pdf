@@ -1,7 +1,7 @@
 # TODO: `pdf-a` feature — PDF/A-2b archival conformance (AC-11.2)
 
 **Status:** DONE (Phase 15b). The `pdf-a` Cargo feature is declared and
-implemented in `crates/turbo-pdf-core/src/emit/pdfa.rs` (+ gated hooks in
+implemented in `crates/turbo-html2pdf-core/src/emit/pdfa.rs` (+ gated hooks in
 `emit/document.rs`, `emit/meta.rs`, `emit/watermark.rs`). A vendored sRGB ICC
 profile (`assets/icc/sRGB-IEC61966-2.1.icc`) is written as an `OutputIntent`
 (`GTS_PDFA`, conformance B); an XMP packet declares `pdfaid:part=2`,
@@ -24,7 +24,7 @@ Conformance needs (a) a vendored **sRGB ICC color profile** + `OutputIntent`,
 the validator passing would be claiming compliance we can't prove.
 
 ## Where to start
-- Source hook: `crates/turbo-pdf-core/src/emit/document.rs`
+- Source hook: `crates/turbo-html2pdf-core/src/emit/document.rs`
   (`TODO(phase15b, feature "pdf-a", AC-11.2)`).
 - Font embedding is already done (Phase 9 subsets + embeds), which is most of the
   hard part — PDF/A mainly *forbids* leaving fonts out.

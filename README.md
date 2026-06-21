@@ -47,9 +47,9 @@ The two authoring packages (`-react`, `-template`) only *produce the template
 string* — they pair with a render package (`turbo-html2pdf` on Node, a
 `turbo-html2pdf-wasm*` build in the browser, or the PyPI wheel) to actually emit a
 PDF. The Rust engine lives in
-[`crates/turbo-pdf-core`](https://github.com/miaskiewicz/turbo-html2pdf/tree/main/crates/turbo-pdf-core).
+[`crates/turbo-html2pdf-core`](https://github.com/miaskiewicz/turbo-html2pdf/tree/main/crates/turbo-html2pdf-core).
 
-> Status: the npm and PyPI packages ship at **`v0.2.2`**.
+> Status: the npm and PyPI packages ship at **`v0.2.3`**.
 
 ## 🌐 Bonus: the same engine runs *inside* a web browser
 
@@ -186,7 +186,7 @@ renders without you supplying a single font byte:
 | `monospace` | **Fira Code** | IBM Plex Mono |
 
 All bundled faces are **SIL Open Font License 1.1**. The attribution that ships with
-the font assets is in [`assets/fonts/NOTICE.md`](crates/turbo-pdf-core/assets/fonts/NOTICE.md);
+the font assets is in [`assets/fonts/NOTICE.md`](crates/turbo-html2pdf-core/assets/fonts/NOTICE.md);
 keep it alongside the binary when you redistribute.
 
 You can still pass your own fonts (via `Fonts.load(...)` on Node or the per-render
@@ -200,7 +200,7 @@ default set in the `.wasm`.
 ## Architecture
 
 A template is **compiled once** into a reusable `Program`, then rendered against
-data many times. The pipeline (`crates/turbo-pdf-core`):
+data many times. The pipeline (`crates/turbo-html2pdf-core`):
 
 ```
 template (HTML + Jinja + t: directives)
@@ -320,7 +320,7 @@ program.render({
 - HTML + CSS subset (block / inline / flexbox / tables), automatic pagination.
 - **Bundled default fonts** (Node + Python) — `sans-serif` / `serif` / `monospace`
   resolve with zero caller fonts (SIL OFL 1.1; see
-  [`assets/fonts/NOTICE.md`](crates/turbo-pdf-core/assets/fonts/NOTICE.md)).
+  [`assets/fonts/NOTICE.md`](crates/turbo-html2pdf-core/assets/fonts/NOTICE.md)).
 - Running headers & footers with per-page values; auto-numbered footnotes.
 - Font subsetting + embedding (TrueType & CFF/OpenType); per-glyph fallback.
 - Raster images (PNG/JPEG, alpha → SMask) with a sane max-size clamp; optional SVG
@@ -391,12 +391,12 @@ npm i turbo-html2pdf        # default — small, no SVG
 npm i turbo-html2pdf-svg    # identical API, SVG support baked in (resvg)
 ```
 
-(Rust users: enable the feature directly — `turbo-pdf-core = { features = ["svg"] }`.)
+(Rust users: enable the feature directly — `turbo-html2pdf-core = { features = ["svg"] }`.)
 
 ## Status
 
-**`v0.2.2`** on npm and PyPI. The core engine is complete and heavily tested (the
-`turbo-pdf-core` crate holds 100% line coverage with a cyclomatic-complexity ≤ 5
+**`v0.2.3`** on npm and PyPI. The core engine is complete and heavily tested (the
+`turbo-html2pdf-core` crate holds 100% line coverage with a cyclomatic-complexity ≤ 5
 gate). Bindings: Node (N-API), WebAssembly (lean + fonts), and Python (PyO3). See
 [`docs/`](docs/) for the full guide and
 [`benches/competitive/`](benches/competitive/) for the benchmark harness.
@@ -404,4 +404,4 @@ gate). Bindings: Node (N-API), WebAssembly (lean + fonts), and Python (PyO3). Se
 ## License
 
 MIT (engine + bindings). Bundled fonts are SIL OFL 1.1 — see
-[`assets/fonts/NOTICE.md`](crates/turbo-pdf-core/assets/fonts/NOTICE.md).
+[`assets/fonts/NOTICE.md`](crates/turbo-html2pdf-core/assets/fonts/NOTICE.md).

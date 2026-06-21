@@ -9,7 +9,7 @@
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
-use turbo_pdf_core::{
+use turbo_html2pdf_core::{
     CompileError, CompileOptions, Diagnostics, EmitOptions, Encryption, FontFace, FontRegistry,
     ImageResolver, ImageWatermark, Lint, MissingPolicy, Permissions, RenderError, Rgba, Span,
     TextWatermark, Watermark,

@@ -16,7 +16,7 @@ name = "turbo_pdf_py"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-turbo-pdf-core = { path = "../turbo-pdf-core", features = [
+turbo-html2pdf-core = { path = "../turbo-html2pdf-core", features = [
     "endnotes",
     "xref",
     "pdf-a",

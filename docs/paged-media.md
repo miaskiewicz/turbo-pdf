@@ -20,7 +20,7 @@ per-page context, footnotes, and the pagination rules. See
 ## 1. The `t:` directives
 
 `t:`-prefixed elements are recognized as typed directives
-(`crates/turbo-pdf-core/src/node.rs`, `TKind`). The parser knows the following
+(`crates/turbo-html2pdf-core/src/node.rs`, `TKind`). The parser knows the following
 local names. Their implementation status (verified against the handling code and
 `TODO(phase…)` markers) is:
 

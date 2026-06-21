@@ -5,7 +5,7 @@
 //! turbo-xlsx-mcp / turbo-parsepdf-mcp layout: this `lib` is the testable
 //! protocol core ([`handle`]); `main.rs` is the stdio pump.
 //!
-//! Tools (all converge on `turbo-pdf-core`, the same pipeline the napi / python
+//! Tools (all converge on `turbo-html2pdf-core`, the same pipeline the napi / python
 //! bindings drive):
 //!   - `render`         — a template + data/CSS/fonts/images/… → `.pdf`
 //!   - `append_pdf`     — glue foreign PDF documents after a base PDF
@@ -28,8 +28,8 @@ use std::collections::HashMap;
 
 use serde_json::{json, Value};
 
-use turbo_pdf_core::style::{parse_stylesheet, TokenSet};
-use turbo_pdf_core::{
+use turbo_html2pdf_core::style::{parse_stylesheet, TokenSet};
+use turbo_html2pdf_core::{
     append_pdfs, build_cascade, compile as core_compile, emit_pdf_with_images, render_pages,
     CompileOptions, Diagnostics, EmitOptions, Encryption, FontFace, FontRegistry, ImageResolver,
     ImageWatermark, Lint, LintCode, MissingPolicy, NoImages, Page, Permissions, RenderInputs, Rgba,

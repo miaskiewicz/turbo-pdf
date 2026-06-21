@@ -1,0 +1,45 @@
+[package]
+name = "turbo-html2pdf-mcp"
+description = "turbo-html2pdf MCP server — native Rust, stdio JSON-RPC 2.0, HTML/CSS + Jinja → PDF (render / append / check)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+# A library (the protocol surface, unit-testable on the host) plus the stdio
+# binary that pumps JSON-RPC over newline-delimited stdin/stdout. Mirrors the
+# sibling turbo-xlsx-mcp / turbo-parsepdf-mcp layout: thin `main` over a testable
+# `lib`.
+[lib]
+name = "turbo_html2pdf_mcp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "turbo-html2pdf-mcp"
+path = "src/main.rs"
+
+[dependencies]
+# The MCP server exposes the full binding surface: every capability the napi /
+# python bindings ship (endnotes, internal links, PDF/A, PDF/UA, CMYK print
+# colour, foreign-PDF append, AES-256 encryption) plus the default bundled fonts
+# so documents render with no caller-supplied faces. Only `svg` is omitted, to
+# match the standard `turbo-html2pdf` npm package.
+turbo-pdf-core = { path = "../turbo-pdf-core", features = [
+    "endnotes",
+    "xref",
+    "pdf-a",
+    "pdf-ua",
+    "print-color",
+    "append",
+    "encrypt",
+] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+# Passthrough for the core `svg` feature (vector `<img>` via resvg). OFF by
+# default so the standard binary matches the standard `turbo-html2pdf` npm
+# package; build with `--features svg` for vector image support.
+svg = ["turbo-pdf-core/svg"]

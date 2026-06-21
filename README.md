@@ -41,6 +41,7 @@ One engine, shipped to every ecosystem. Pick the one for your runtime:
 | **`turbo-html2pdf-react`** | npm | Author templates as **React** components → template string (at authoring time). | `npm i turbo-html2pdf-react` |
 | **`turbo-html2pdf-template`** | npm | Author templates with **plain functions** (no React). | `npm i turbo-html2pdf-template` |
 | **`turbo-html2pdf`** | PyPI | **Python** binding (PyO3 / maturin) — `compile`/`render` → `bytes`. Bundles the default fonts. | `pip install turbo-html2pdf` |
+| **`turbo-html2pdf-mcp`** | Rust crate | Native **MCP server** (stdio JSON-RPC 2.0) exposing `render` / `append_pdf` / `check_template` to agents. Not a registry package — `cargo build -p turbo-html2pdf-mcp --release`. | see [`crates/turbo-html2pdf-mcp`](crates/turbo-html2pdf-mcp) |
 
 The two authoring packages (`-react`, `-template`) only *produce the template
 string* — they pair with a render package (`turbo-html2pdf` on Node, a
@@ -48,7 +49,7 @@ string* — they pair with a render package (`turbo-html2pdf` on Node, a
 PDF. The Rust engine lives in
 [`crates/turbo-pdf-core`](https://github.com/miaskiewicz/turbo-html2pdf/tree/main/crates/turbo-pdf-core).
 
-> Status: the npm and PyPI packages ship at **`v0.1.7`**.
+> Status: the npm and PyPI packages ship at **`v0.2.0`**.
 
 ## 🌐 Bonus: the same engine runs *inside* a web browser
 
@@ -232,6 +233,8 @@ ones you pass.
 - `turbo-html2pdf-react` — author templates as React components (compiled to the
   template string at authoring time, never on the render path).
 - `turbo-html2pdf-template` — author templates with plain functions (no React).
+- `turbo-html2pdf-mcp` — native MCP server (stdio JSON-RPC) exposing `render` /
+  `append_pdf` / `check_template` to agents (`cargo build -p turbo-html2pdf-mcp`).
 
 The engine is `Send + Sync`: one compiled `Program` renders concurrently across
 threads.
@@ -392,7 +395,7 @@ npm i turbo-html2pdf-svg    # identical API, SVG support baked in (resvg)
 
 ## Status
 
-**`v0.1.7`** on npm and PyPI. The core engine is complete and heavily tested (the
+**`v0.2.0`** on npm and PyPI. The core engine is complete and heavily tested (the
 `turbo-pdf-core` crate holds 100% line coverage with a cyclomatic-complexity ≤ 5
 gate). Bindings: Node (N-API), WebAssembly (lean + fonts), and Python (PyO3). See
 [`docs/`](docs/) for the full guide and

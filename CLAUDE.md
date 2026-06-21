@@ -91,12 +91,22 @@ crate pins core `default-features = false` (no fonts) + the capability features;
 `-wasm-fonts` adds `bundled-fonts`. The `.wasm` build needs
 `RUSTFLAGS='--cfg getrandom_backend="wasm_js"'` (encrypt/append pull getrandom 0.3).
 
+`crates/turbo-html2pdf-mcp` is a native **MCP server** (stdio JSON-RPC 2.0, no
+SDK) over the same core pipeline — a `bin` (`turbo-html2pdf-mcp`) over a testable
+protocol `lib`. It compiles the same full feature set EXCEPT `svg` and exposes
+`render` / `append_pdf` / `check_template` (the union of the napi + py surface).
+It is a Rust binary, NOT an npm/PyPI package: there is no publish job; consumers
+`cargo build -p turbo-html2pdf-mcp --release`. It is excluded from the coverage
+gate (`tarpaulin.toml`) like the other bindings; its surface is unit-tested
+in-crate. It inherits the workspace version, so it needs no manual version bump.
+
 ## Known gaps
 
-- **`turbo-html2pdf-svg` is documented but NOT published.** The README lists it
-  (npm engine built with the `svg` feature for vector `<img>`), but there is no
-  `publish-svg` job in `release.yml` and the napi crate has no `svg` passthrough
-  feature. To ship it: add `svg = ["turbo-pdf-core/svg"]` to
-  `crates/turbo-pdf-napi/Cargo.toml`, add a `publish-svg` job mirroring
-  `publish-napi` that builds with `napi build --features svg` and rewrites
-  `package.json` `name` → `turbo-html2pdf-svg` before `npm publish`.
+- **`turbo-html2pdf-svg` IS published.** The napi crate carries the
+  `svg = ["turbo-pdf-core/svg"]` passthrough feature
+  (`crates/turbo-pdf-napi/Cargo.toml`), and `release.yml` builds it on every
+  `v*` tag via the `build-napi-svg` / `build-napi-svg-musl` jobs and ships it
+  under the `turbo-html2pdf-svg` npm name from `publish-svg`. (Earlier revisions
+  of this file said it was unpublished — that is no longer true.) The MCP crate
+  also carries an `svg` passthrough; the standard binary omits it, build it with
+  `cargo build -p turbo-html2pdf-mcp --release --features svg` for vector `<img>`.

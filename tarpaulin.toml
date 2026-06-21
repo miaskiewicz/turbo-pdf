@@ -7,7 +7,7 @@
 # their native-link step never runs here.
 [default]
 workspace = true
-exclude = ["turbo-pdf-napi", "turbo-pdf-py"]
+exclude = ["turbo-pdf-napi", "turbo-pdf-py", "turbo-html2pdf-mcp"]
 # Pin the LLVM source-based engine on EVERY platform. tarpaulin's `Auto` engine
 # picks `Llvm` on macOS but `Ptrace` on Linux, and the two disagree about both
 # line attribution and whether the integration `tests/*.rs` files belong in the
@@ -22,6 +22,11 @@ exclude-files = [
     "crates/turbo-pdf-napi/*",
     "crates/turbo-pdf-py/*",
     "crates/turbo-pdf-wasm/*",
+    # The MCP server is a thin stdio JSON-RPC shim over the covered core (a
+    # `bin` + protocol `lib`), the same shape as the napi/py/wasm bindings. Its
+    # own protocol surface is unit-tested in-crate; it carries no core logic, so
+    # it is kept out of the default coverage gate.
+    "crates/turbo-html2pdf-mcp/*",
     # Opt-in hot-path instrumentation (the `perf` feature); off in normal builds
     # and covered functionally by the `--features perf` tests in tests/perf.rs.
     "crates/turbo-pdf-core/src/perf.rs",

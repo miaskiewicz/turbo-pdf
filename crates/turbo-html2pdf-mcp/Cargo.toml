@@ -1,6 +1,9 @@
 [package]
 name = "turbo-html2pdf-mcp"
 description = "turbo-html2pdf MCP server — native Rust, stdio JSON-RPC 2.0, HTML/CSS + Jinja → PDF (render / append / check)"
+readme = "README.md"
+keywords = ["pdf", "html", "mcp", "jinja", "template"]
+categories = ["command-line-utilities", "template-engine"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -26,7 +29,11 @@ path = "src/main.rs"
 # colour, foreign-PDF append, AES-256 encryption) plus the default bundled fonts
 # so documents render with no caller-supplied faces. Only `svg` is omitted, to
 # match the standard `turbo-html2pdf` npm package.
-turbo-pdf-core = { path = "../turbo-pdf-core", features = [
+# `version` (not just `path`) is REQUIRED for crates.io: the published mcp crate
+# resolves turbo-pdf-core from the registry. `"0.2"` (^0.2) tracks any 0.2.x core
+# so it only needs touching on a minor bump, not every patch. Keep core published
+# FIRST (the release-crates.yml job order) so this resolves.
+turbo-pdf-core = { path = "../turbo-pdf-core", version = "0.2", features = [
     "endnotes",
     "xref",
     "pdf-a",

@@ -10,11 +10,19 @@ Releases are **tag-driven**. Two independent tag prefixes:
 | Tag      | Workflow             | Publishes to                                                                 |
 | -------- | -------------------- | ---------------------------------------------------------------------------- |
 | `vX.Y.Z`  | `.github/workflows/release.yml`    | **npm**: `turbo-html2pdf`, `-react`, `-template`, `-wasm`, `-wasm-fonts`, `-svg`; **GitHub Release**: `turbo-html2pdf-mcp` per-platform binary archives (`publish-mcp`) |
+| `vX.Y.Z`  | `.github/workflows/release-crates.yml` | **crates.io**: `turbo-pdf-core`, then `turbo-html2pdf-mcp` (ordered — core first). Same `v*` tag as npm |
 | `pyvX.Y.Z`| `.github/workflows/release-py.yml` | **PyPI**: `turbo-html2pdf` (maturin abi3 wheels + sdist)                  |
 
 Required GitHub repo secrets: **`NPM_TOKEN`** (npm automation token, public
-publish) and **`PYPI_TOKEN`** (PyPI API token). If `PYPI_TOKEN` is unset the
-PyPI publish step self-skips (builds wheels, uploads nothing).
+publish), **`PYPI_TOKEN`** (PyPI API token), and **`CARGO_REGISTRY_TOKEN`**
+(crates.io API token). If `PYPI_TOKEN` is unset the PyPI publish self-skips; if
+`CARGO_REGISTRY_TOKEN` is unset the crates.io publish self-skips (verifies the
+package, uploads nothing).
+
+The `turbo-html2pdf-mcp` crate depends on `turbo-pdf-core` with an explicit
+`version = "0.2"` (^0.2) alongside its `path` — crates.io requires a version on
+the dep. It only needs bumping on a **minor** (0.x) change, not every patch;
+keep it in sync with the workspace major.minor when you cross a minor boundary.
 
 ### 1. Bump the version — EVERY place below (they are NOT auto-synced)
 

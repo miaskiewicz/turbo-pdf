@@ -1,6 +1,9 @@
 [package]
 name = "turbo-pdf-core"
 description = "Native HTML/CSS-to-PDF engine with a Jinja-compatible templating DSL (core crate)"
+readme = "README.md"
+keywords = ["pdf", "html", "css", "template", "jinja"]
+categories = ["template-engine", "text-processing"]
 version.workspace = true
 edition.workspace = true
 license.workspace = true

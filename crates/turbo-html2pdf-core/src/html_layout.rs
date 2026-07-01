@@ -82,7 +82,8 @@ mod tests {
         let nodes = parse_html("<body><p>a {{ x }} b</p></body>").expect("parse");
         assert!(!nodes.is_empty());
         // `collect_style_css` finds a body `<style>` (head is dropped by html5ever).
-        let css = collect_style_css(&parse_html("<body><style>.a{color:red}</style></body>").unwrap());
+        let css =
+            collect_style_css(&parse_html("<body><style>.a{color:red}</style></body>").unwrap());
         assert!(css.contains(".a{color:red}"));
     }
 

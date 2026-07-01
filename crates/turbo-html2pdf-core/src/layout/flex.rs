@@ -201,6 +201,11 @@ fn measure_item(
         fonts,
         images: &images,
         diags: scratch,
+        // Scratch measurement: the item is its own containing block at origin.
+        abs_cb_x: 0.0,
+        abs_cb_y: 0.0,
+        abs_cb_w: w,
+        root_w: w,
     };
     let frag = block::layout_box_sized(item, &bs, 0.0, 0.0, w, &mut mctx);
     Size {

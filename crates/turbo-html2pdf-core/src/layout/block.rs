@@ -20,7 +20,7 @@ use super::fragment::{BreakMeta, Fragment, FragmentContent, ImagePlacement, Node
 use super::imgsize::{size_replaced, SizeCtx, SizedImage};
 use super::inline::{self, InlineRun};
 use super::value::{
-    resolve_box_style, BoxSizing, BoxStyle, LengthPct, ResolveCtx, DEFAULT_FONT_SIZE,
+    resolve_box_style, BoxSizing, BoxStyle, LengthPct, Position, ResolveCtx, DEFAULT_FONT_SIZE,
 };
 use super::ImageCtx;
 
@@ -29,6 +29,60 @@ pub(crate) struct Ctx<'a> {
     pub(crate) fonts: &'a FontRegistry,
     pub(crate) images: &'a ImageCtx<'a>,
     pub(crate) diags: &'a mut Diagnostics,
+    /// Containing block for `position:absolute` descendants — the content-box
+    /// origin (`x`,`y`) + width of the nearest positioned ancestor (the page at
+    /// the root). `position:fixed` uses the page origin (`0,0`,[`Ctx::root_w`]).
+    pub(crate) abs_cb_x: f32,
+    pub(crate) abs_cb_y: f32,
+    pub(crate) abs_cb_w: f32,
+    /// The initial containing block width (page content width) — the CB for
+    /// `position:fixed` boxes.
+    pub(crate) root_w: f32,
+}
+
+/// The containing-block origin (x, y) + width a positioned box resolves its
+/// insets against: the page for `fixed`, else the nearest positioned ancestor.
+fn containing_block(bs: &BoxStyle, ctx: &Ctx) -> (f32, f32, f32) {
+    if bs.position == Position::Fixed {
+        (0.0, 0.0, ctx.root_w)
+    } else {
+        (ctx.abs_cb_x, ctx.abs_cb_y, ctx.abs_cb_w)
+    }
+}
+
+/// The border-box top-left of an out-of-flow (`absolute`/`fixed`) box: its
+/// containing-block origin offset by the resolved insets (`left`/`right`,
+/// `top`/`bottom`), plus its own margins. A missing (`auto`) inset anchors to the
+/// CB's start edge; `right`/`bottom` anchor from the far edge when their opposite
+/// is `auto`. Percentage insets resolve against the CB width (height is unknown
+/// mid-layout, so `%` top/bottom also use width — a documented approximation).
+fn out_of_flow_origin(bs: &BoxStyle, cb_width: f32, ctx: &Ctx) -> (f32, f32) {
+    let (cbx, cby, cbw) = containing_block(bs, ctx);
+    let bbw = border_box_width(bs, cbw.max(cb_width));
+    let x = match (bs.inset_left.resolve(cbw), bs.inset_right.resolve(cbw)) {
+        (Some(l), _) => cbx + l,
+        (None, Some(r)) => cbx + cbw - bbw - r,
+        (None, None) => cbx,
+    };
+    let top = bs.inset_top.resolve(cbw);
+    let y = cby + top.unwrap_or(0.0);
+    (x + bs.margin.left, y + bs.margin.top)
+}
+
+/// The `(dx, dy)` a `position:relative` box is visually shifted by (it still
+/// occupies its normal-flow space). `left`/`top` win over `right`/`bottom`.
+fn relative_offset(bs: &BoxStyle, cb_width: f32) -> (f32, f32) {
+    let dx = bs
+        .inset_left
+        .resolve(cb_width)
+        .or_else(|| bs.inset_right.resolve(cb_width).map(|r| -r))
+        .unwrap_or(0.0);
+    let dy = bs
+        .inset_top
+        .resolve(cb_width)
+        .or_else(|| bs.inset_bottom.resolve(cb_width).map(|b| -b))
+        .unwrap_or(0.0);
+    (dx, dy)
 }
 
 fn resolve(lb: &LayoutBox, cb_width: f32, parent_fs: f32) -> BoxStyle {
@@ -238,8 +292,24 @@ fn layout_block_flow(
     let mut pending = 0.0_f32;
     for kid in kids {
         let kbs = resolve(kid, cw, fs);
+        // `absolute`/`fixed`: taken out of flow — laid out at the containing
+        // block + insets, contributing nothing to the cursor or margin run.
+        if kbs.position.is_out_of_flow() {
+            let (bx, by) = out_of_flow_origin(&kbs, cw, ctx);
+            frags.push(layout_box(kid, bx, by, cw, fs, ctx));
+            continue;
+        }
+        // `relative`: flows normally (its space is reserved via the cursor) but
+        // is painted shifted by its insets, so lay it out at the shifted origin.
+        let (dx, dy) = if matches!(kbs.position, Position::Relative | Position::Sticky) {
+            relative_offset(&kbs, cw)
+        } else {
+            (0.0, 0.0)
+        };
         pending = pending.max(kbs.margin.top);
-        let frag = layout_box(kid, cx + kbs.margin.left, cursor + pending, cw, fs, ctx);
+        let flow_y = cursor + pending;
+        let frag = layout_box(kid, cx + kbs.margin.left + dx, flow_y + dy, cw, fs, ctx);
+        // Advance the cursor by the box's height at its *unshifted* flow position.
         if frag.height == 0.0 {
             pending = pending.max(kbs.margin.bottom);
         } else {
@@ -304,7 +374,16 @@ pub(crate) fn layout_box_sized(
     let content_x = bx + bw.left + bs.padding.left;
     let content_y = by + bw.top + bs.padding.top;
     let content_w = (bbw - bs.padding.horizontal() - bw.horizontal()).max(0.0);
+    // A positioned box establishes the containing block for its `absolute`
+    // descendants (its content box). Save/restore around the child layout.
+    let saved_cb = (ctx.abs_cb_x, ctx.abs_cb_y, ctx.abs_cb_w);
+    if bs.position != Position::Static {
+        ctx.abs_cb_x = content_x;
+        ctx.abs_cb_y = content_y;
+        ctx.abs_cb_w = content_w;
+    }
     let (mut children, content_h) = layout_content(lb, bs, content_x, content_y, content_w, ctx);
+    (ctx.abs_cb_x, ctx.abs_cb_y, ctx.abs_cb_w) = saved_cb;
     let bbh = content_box_height(bs, content_h) + bs.padding.vertical() + bw.vertical();
     prepend_background_image(
         lb,
@@ -484,6 +563,11 @@ pub fn layout_tree_with_images(
         fonts,
         images,
         diags,
+        // The initial containing block is the page: origin (0,0), page width.
+        abs_cb_x: 0.0,
+        abs_cb_y: 0.0,
+        abs_cb_w: cb_width,
+        root_w: cb_width,
     };
     layout_box(root, 0.0, 0.0, cb_width, DEFAULT_FONT_SIZE, &mut ctx)
 }

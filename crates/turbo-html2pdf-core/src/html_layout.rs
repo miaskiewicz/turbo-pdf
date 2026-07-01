@@ -71,3 +71,24 @@ pub fn layout_html(
     let styled = style_tree(&nodes, &cascade);
     Ok(crate::layout(&styled, cb_width, fonts, diags))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{collect_style_css, parse_html};
+
+    #[test]
+    fn parse_html_keeps_body_and_skips_jinja() {
+        // Braces are page content, not template syntax — they survive verbatim.
+        let nodes = parse_html("<body><p>a {{ x }} b</p></body>").expect("parse");
+        assert!(!nodes.is_empty());
+        // `collect_style_css` finds a body `<style>` (head is dropped by html5ever).
+        let css = collect_style_css(&parse_html("<body><style>.a{color:red}</style></body>").unwrap());
+        assert!(css.contains(".a{color:red}"));
+    }
+
+    #[test]
+    fn collect_style_css_empty_without_styles() {
+        let nodes = parse_html("<body><div>plain</div></body>").expect("parse");
+        assert_eq!(collect_style_css(&nodes), "");
+    }
+}

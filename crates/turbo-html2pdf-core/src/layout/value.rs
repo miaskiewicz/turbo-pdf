@@ -396,11 +396,40 @@ fn cmyk_component(token: &str) -> Option<f32> {
 // resolved box style
 // --------------------------------------------------------------------------
 
+/// CSS `position` scheme. `Static` is normal flow; the rest establish the box's
+/// relationship to a containing block (and, for non-`Static`, a stacking
+/// context when paired with a `z-index`). `Sticky` is treated as `Relative` for
+/// layout (no scroll container in a paged/snapshot render).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Position {
+    #[default]
+    Static,
+    Relative,
+    Absolute,
+    Fixed,
+    Sticky,
+}
+
+impl Position {
+    /// Whether the box is taken out of normal flow (`absolute`/`fixed`).
+    pub fn is_out_of_flow(self) -> bool {
+        matches!(self, Position::Absolute | Position::Fixed)
+    }
+}
+
 /// The fully typed style a box uses for layout, resolved from a [`ComputedStyle`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoxStyle {
     pub display: Display,
-    pub position_relative: bool,
+    /// CSS `position` scheme (was `position_relative: bool`).
+    pub position: Position,
+    /// Inset offsets (`top`/`right`/`bottom`/`left`); `Auto` when unset.
+    pub inset_top: LengthPct,
+    pub inset_right: LengthPct,
+    pub inset_bottom: LengthPct,
+    pub inset_left: LengthPct,
+    /// `z-index` paint order within the stacking context; `None` = `auto`.
+    pub z_index: Option<i32>,
     pub margin: Edges,
     pub padding: Edges,
     pub border: BorderEdges,
@@ -462,6 +491,17 @@ pub fn display_of(s: &ComputedStyle) -> Display {
         "table-footer-group" => Display::TableFooterGroup,
         "list-item" => Display::ListItem,
         _ => Display::Block,
+    }
+}
+
+/// The CSS `position` scheme (defaults to `static`).
+pub fn position_of(s: &ComputedStyle) -> Position {
+    match s.get("position").map(str::trim) {
+        Some("relative") => Position::Relative,
+        Some("absolute") => Position::Absolute,
+        Some("fixed") => Position::Fixed,
+        Some("sticky") => Position::Sticky,
+        _ => Position::Static,
     }
 }
 
@@ -660,7 +700,12 @@ fn int_prop(s: &ComputedStyle, prop: &str, default: u8) -> u8 {
 fn resolve_box_metrics(s: &ComputedStyle, fs: f32, ctx: ResolveCtx) -> BoxStyle {
     BoxStyle {
         display: display_of(s),
-        position_relative: s.get("position").map(str::trim) == Some("relative"),
+        position: position_of(s),
+        inset_top: length_prop(s, "top", fs, LengthPct::Auto),
+        inset_right: length_prop(s, "right", fs, LengthPct::Auto),
+        inset_bottom: length_prop(s, "bottom", fs, LengthPct::Auto),
+        inset_left: length_prop(s, "left", fs, LengthPct::Auto),
+        z_index: s.get("z-index").and_then(|v| v.trim().parse::<i32>().ok()),
         margin: resolve_edges(s, "margin", fs, ctx.cb_width),
         padding: resolve_edges(s, "padding", fs, ctx.cb_width),
         border: resolve_borders(s, fs),

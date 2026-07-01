@@ -155,8 +155,29 @@ fn box_sizing_and_position() {
         resolve(&[("box-sizing", "content-box")]).box_sizing,
         BoxSizing::ContentBox
     );
-    assert!(resolve(&[("position", "relative")]).position_relative);
-    assert!(!resolve(&[("position", "static")]).position_relative);
+    assert_eq!(
+        resolve(&[("position", "relative")]).position,
+        Position::Relative
+    );
+    assert_eq!(
+        resolve(&[("position", "static")]).position,
+        Position::Static
+    );
+    assert_eq!(
+        resolve(&[("position", "absolute")]).position,
+        Position::Absolute
+    );
+    // Inset offsets + z-index parse into the box model.
+    let s = resolve(&[
+        ("position", "absolute"),
+        ("top", "10px"),
+        ("left", "20px"),
+        ("z-index", "5"),
+    ]);
+    assert_eq!(s.inset_top, LengthPct::Px(10.0));
+    assert_eq!(s.inset_left, LengthPct::Px(20.0));
+    assert_eq!(s.z_index, Some(5));
+    assert!(s.position.is_out_of_flow());
 }
 
 #[test]

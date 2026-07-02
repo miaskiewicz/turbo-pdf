@@ -33,6 +33,63 @@ fn family_matches(face: &FontFace, name: &str) -> bool {
     face.family().eq_ignore_ascii_case(name.trim())
 }
 
+/// The conventional installed-font directories for the host OS.
+fn system_font_dirs() -> Vec<std::path::PathBuf> {
+    use std::path::PathBuf;
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    #[cfg(target_os = "macos")]
+    let mut dirs = vec![
+        PathBuf::from("/System/Library/Fonts"),
+        PathBuf::from("/System/Library/Fonts/Supplemental"),
+        PathBuf::from("/Library/Fonts"),
+    ];
+    #[cfg(target_os = "macos")]
+    if let Some(h) = &home {
+        dirs.push(h.join("Library/Fonts"));
+    }
+    #[cfg(target_os = "linux")]
+    let mut dirs = vec![
+        PathBuf::from("/usr/share/fonts"),
+        PathBuf::from("/usr/local/share/fonts"),
+    ];
+    #[cfg(target_os = "linux")]
+    if let Some(h) = &home {
+        dirs.push(h.join(".fonts"));
+        dirs.push(h.join(".local/share/fonts"));
+    }
+    #[cfg(target_os = "windows")]
+    let dirs = vec![PathBuf::from(
+        std::env::var("WINDIR").unwrap_or_else(|_| "C:\\Windows".into()) + "\\Fonts",
+    )];
+    #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
+    let dirs: Vec<PathBuf> = Vec::new();
+    let _ = &home;
+    dirs
+}
+
+/// Load every face of one font file (`.ttf`/`.otf`/`.ttc`) into `faces`, each
+/// under its own family/weight/style read from the font. Non-font files skipped.
+fn load_font_file(faces: &mut Vec<FontFace>, path: &std::path::Path) {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(str::to_ascii_lowercase);
+    if !matches!(ext.as_deref(), Some("ttf" | "otf" | "ttc")) {
+        return;
+    }
+    let Ok(bytes) = std::fs::read(path) else {
+        return;
+    };
+    for i in 0..super::font::face_count(&bytes) {
+        if let Some((family, weight, italic)) = super::font::describe(&bytes, i) {
+            if let Some(face) = FontFace::from_bytes_index(bytes.clone(), i, family, weight, italic)
+            {
+                faces.push(face);
+            }
+        }
+    }
+}
+
 fn score(face: &FontFace, weight: u16, italic: bool) -> u32 {
     let weight_diff = (i32::from(face.weight()) - i32::from(weight)).unsigned_abs();
     let style_penalty = if face.is_italic() == italic { 0 } else { 1000 };
@@ -50,7 +107,12 @@ fn expand_family(name: &str) -> Vec<&str> {
         let key = name.trim();
         for (generic, reals) in super::bundled::GENERICS {
             if key.eq_ignore_ascii_case(generic) {
-                return reals.to_vec();
+                // Try a directly-registered generic first (system fonts loaded via
+                // `load_system_fonts` alias `sans-serif` etc. to a system family),
+                // then the bundled reals.
+                let mut v = vec![name];
+                v.extend_from_slice(reals);
+                return v;
             }
         }
     }
@@ -70,6 +132,76 @@ impl FontRegistry {
 
     pub fn add(&mut self, face: FontFace) {
         self.faces.push(face);
+    }
+
+    /// Register every installed system font (opt-in — **not** part of `new()`;
+    /// default rendering, e.g. PDF generation, uses only the shipped/bundled
+    /// faces). Walks the OS font directories, registering each face under its own
+    /// family, and aliases the CSS generics to the conventional system families
+    /// (`sans-serif`→Helvetica/Arial, `serif`→Times, `monospace`→Menlo/Courier) so
+    /// a page that names an installed font — or a generic — renders in it, matching
+    /// a browser on the same machine. Best-effort: unreadable dirs/files skipped.
+    pub fn load_system_fonts(&mut self) {
+        for dir in system_font_dirs() {
+            let Ok(entries) = std::fs::read_dir(&dir) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                load_font_file(&mut self.faces, &entry.path());
+            }
+        }
+        self.alias_generics();
+    }
+
+    /// Alias each CSS generic to the first installed candidate family (all its
+    /// weights/styles), so `font-family: sans-serif` resolves to a system font.
+    fn alias_generics(&mut self) {
+        const GENERIC_CANDIDATES: &[(&str, &[&str])] = &[
+            (
+                "sans-serif",
+                &[
+                    "Helvetica",
+                    "Helvetica Neue",
+                    "Arial",
+                    "Liberation Sans",
+                    "DejaVu Sans",
+                ],
+            ),
+            (
+                "serif",
+                &[
+                    "Times New Roman",
+                    "Times",
+                    "Georgia",
+                    "Liberation Serif",
+                    "DejaVu Serif",
+                ],
+            ),
+            (
+                "monospace",
+                &[
+                    "Menlo",
+                    "Courier New",
+                    "Courier",
+                    "Monaco",
+                    "DejaVu Sans Mono",
+                ],
+            ),
+        ];
+        for (generic, candidates) in GENERIC_CANDIDATES {
+            if let Some(cand) = candidates
+                .iter()
+                .find(|c| self.faces.iter().any(|f| family_matches(f, c)))
+            {
+                let aliased: Vec<FontFace> = self
+                    .faces
+                    .iter()
+                    .filter(|f| family_matches(f, cand))
+                    .map(|f| f.with_family(*generic))
+                    .collect();
+                self.faces.extend(aliased);
+            }
+        }
     }
 
     /// True when the registry has no usable face at all (neither caller nor

@@ -29,10 +29,42 @@ self_cell::self_cell!(
 /// Parse the metric and shaping faces from font `bytes`; `Err` if the bytes are
 /// not a valid font. `rustybuzz` accepts exactly what `ttf-parser` validated, so
 /// once the metric face parses the shaping face is infallible.
-fn build_parsed(bytes: &[u8]) -> Result<Parsed<'_>, ()> {
-    let ttf = TtfFace::parse(bytes, 0).map_err(|_| ())?;
-    let rb = RbFace::from_slice(bytes, 0).expect("rustybuzz parses what ttf-parser validated");
+/// Parse one face of a font (index `> 0` selects a face in a `.ttc` collection).
+fn build_parsed_index(bytes: &[u8], index: u32) -> Result<Parsed<'_>, ()> {
+    let ttf = TtfFace::parse(bytes, index).map_err(|_| ())?;
+    let rb = RbFace::from_slice(bytes, index).expect("rustybuzz parses what ttf-parser validated");
     Ok(Parsed { ttf, rb })
+}
+
+/// Number of faces in a font file (`> 1` for a `.ttc` TrueType collection).
+pub fn face_count(bytes: &[u8]) -> u32 {
+    rustybuzz::ttf_parser::fonts_in_collection(bytes).unwrap_or(1)
+}
+
+/// Read a font face's own `(family, weight, italic)` from its name/OS-2 tables —
+/// used to register installed system fonts under their real family. `None` if the
+/// face (at `index`) doesn't parse or names no family.
+pub fn describe(bytes: &[u8], index: u32) -> Option<(String, u16, bool)> {
+    let face = TtfFace::parse(bytes, index).ok()?;
+    let family = family_name(&face)?;
+    Some((family, face.weight().to_number(), face.is_italic()))
+}
+
+/// The face's English family name: the typographic family (name id 16) if
+/// present, else the legacy font family (name id 1).
+fn family_name(face: &TtfFace) -> Option<String> {
+    let mut legacy = None;
+    for name in face.names() {
+        if !name.is_unicode() {
+            continue;
+        }
+        match (name.name_id, name.to_string()) {
+            (16, Some(s)) => return Some(s),
+            (1, Some(s)) => legacy = legacy.or(Some(s)),
+            _ => {}
+        }
+    }
+    legacy
 }
 
 /// Read the cached metrics `(units_per_em, ascent, descent, line_gap)`.
@@ -94,8 +126,20 @@ impl FontFace {
         weight: u16,
         italic: bool,
     ) -> Option<FontFace> {
+        FontFace::from_bytes_index(data, 0, family, weight, italic)
+    }
+
+    /// Like [`FontFace::from_bytes`] but selects face `index` of a `.ttc`
+    /// collection (0 for a single-face `.ttf`/`.otf`).
+    pub fn from_bytes_index(
+        data: Vec<u8>,
+        index: u32,
+        family: impl Into<String>,
+        weight: u16,
+        italic: bool,
+    ) -> Option<FontFace> {
         crate::hot!("font.face.build");
-        let faces = OwnedFaces::try_new(data, |bytes| build_parsed(bytes)).ok()?;
+        let faces = OwnedFaces::try_new(data, |bytes| build_parsed_index(bytes, index)).ok()?;
         let (units_per_em, ascent, descent, line_gap) = metrics(faces.borrow_dependent());
         Some(FontFace {
             faces: Arc::new(faces),
@@ -112,6 +156,16 @@ impl FontFace {
 
     pub fn family(&self) -> &str {
         &self.family
+    }
+
+    /// This face re-tagged with a different family name (cheap — the parsed font
+    /// and shape cache are shared via `Arc`). Used to register a system font under
+    /// a CSS generic (`sans-serif` → Helvetica).
+    pub fn with_family(&self, family: impl Into<String>) -> FontFace {
+        FontFace {
+            family: family.into(),
+            ..self.clone()
+        }
     }
 
     /// The raw font program bytes (the OpenType/TrueType file). The PDF emitter

@@ -198,7 +198,28 @@ fn directive_level(kind: TKind, el: &StyledElement, ids: &mut Ids) -> Level {
     }
 }
 
+/// Whether a box (and its subtree) is not rendered: `display:none`, or the
+/// invisible states `visibility:hidden` / `opacity:0`. We drop it rather than
+/// paint an invisible box — which is also what keeps hover/click-revealed menus
+/// (Wikipedia's nav dropdowns) hidden in a static snapshot, since their reveal
+/// rule (`:hover`/`:checked ~ …`) is never applied.
+pub(crate) fn is_hidden(style: &ComputedStyle) -> bool {
+    if matches!(display_of(style), Display::None) {
+        return true;
+    }
+    if style.get("visibility").map(str::trim) == Some("hidden") {
+        return true;
+    }
+    matches!(
+        style.get("opacity").map(|v| v.trim().parse::<f32>()),
+        Some(Ok(o)) if o <= 0.0
+    )
+}
+
 fn classify_html(el: &StyledElement, ids: &mut Ids) -> Option<Level> {
+    if is_hidden(&el.style) {
+        return None;
+    }
     #[cfg(feature = "xref")]
     if xref::internal_link_href(el).is_some() {
         // An `<a href="#name">` is laid out as an atomic inline box so it carries
@@ -353,7 +374,7 @@ fn child_block_boxes(el: &StyledElement, ids: &mut Ids) -> Vec<LayoutBox> {
 
 fn block_child(node: &StyledNode, ids: &mut Ids) -> Option<LayoutBox> {
     let el = node.as_element()?;
-    if !is_directive(el) && matches!(display_of(&el.style), Display::None) {
+    if !is_directive(el) && is_hidden(&el.style) {
         return None;
     }
     Some(build_block_box(el, ids))

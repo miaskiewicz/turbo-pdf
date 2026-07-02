@@ -73,7 +73,19 @@ PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`
   responsive stylesheets pick the right breakpoint (this is what lets Wikipedia's
   desktop grid layout apply at all).
 
+- **Optional system-font loading** (`FontRegistry::load_system_fonts`, opt-in —
+  **not** used by default PDF rendering, which keeps only shipped/bundled faces).
+  Registers every installed OS font under its own family (macOS/Linux/Windows
+  dirs, `.ttf`/`.otf`/`.ttc`) and aliases the CSS generics to system families
+  (`sans-serif`→Helvetica/Arial, …). Lets a screenshot match a browser on the same
+  machine when a page names installed/system fonts. `FontFace::from_bytes_index`
+  (`.ttc` faces) + `face_count`/`describe` read a font's own family/weight/style.
+
 ### Fixed
+- **`visibility:hidden` / `opacity:0` boxes are dropped** (were rendered). These
+  hide an element + subtree; painting them dumped content meant to be revealed on
+  hover/click — e.g. Wikipedia's nav dropdowns, whose reveal rule
+  (`:checked ~ …`) we don't apply, rendered fully expanded. Now they don't paint.
 - **`background` shorthand is now honored.** The cascade only read the
   `background-color`/`background-image` longhands, so `background: #fff url(...)
   no-repeat` (which real stylesheets use pervasively) set neither the box's

@@ -483,3 +483,33 @@ fn break_properties_propagate_to_meta() {
     assert!(m.break_inside_avoid);
     assert_eq!(m.orphans, 3);
 }
+
+#[test]
+fn visibility_hidden_and_opacity_zero_drop_the_box() {
+    // visibility:hidden / opacity:0 boxes are not rendered (this is what keeps
+    // Wikipedia's click/hover-revealed nav dropdowns hidden in a static shot).
+    let vis = lay(
+        &[el(
+            "div",
+            &[("visibility", "hidden"), ("background-color", "#ff0000")],
+            vec![txt("x")],
+        )],
+        200.0,
+    );
+    assert!(bg_boxes(&vis).is_empty(), "visibility:hidden box dropped");
+    let op = lay(
+        &[el(
+            "div",
+            &[("opacity", "0"), ("background-color", "#00ff00")],
+            vec![txt("y")],
+        )],
+        200.0,
+    );
+    assert!(bg_boxes(&op).is_empty(), "opacity:0 box dropped");
+    // A normal box still renders.
+    let visible = lay(
+        &[el("div", &[("background-color", "#0000ff")], vec![])],
+        200.0,
+    );
+    assert_eq!(bg_boxes(&visible).len(), 1);
+}

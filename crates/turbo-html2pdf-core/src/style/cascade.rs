@@ -407,6 +407,33 @@ fn is_tag(element: &Element, name: &str) -> bool {
     matches!(&element.tag, Tag::Html(t) if t.eq_ignore_ascii_case(name))
 }
 
+/// The `cellpadding` (px) of the nearest ancestor `<table>` — a legacy table
+/// attribute that pads every cell (e.g. HN's `cellpadding="1"` divider bar, an
+/// empty coloured `<td>` that must reserve its padding to show as a line).
+fn ancestor_cellpadding(path: &[Ctx]) -> Option<f32> {
+    let table = path.iter().rev().skip(1).find(|c| c.tag == Some("table"))?;
+    let attr = table
+        .attrs
+        .iter()
+        .find(|a| a.name.eq_ignore_ascii_case("cellpadding"))?;
+    attr.value.trim().parse::<f32>().ok()
+}
+
+/// Apply a table's `cellpadding` to its cells as a presentational padding hint.
+fn collect_cellpadding(element: &Element, path: &[Ctx], out: &mut Vec<Cand>) {
+    if !(is_tag(element, "td") || is_tag(element, "th")) {
+        return;
+    }
+    if let Some(pad) = ancestor_cellpadding(path) {
+        let decl = Declaration {
+            property: "padding".to_string(),
+            value: format!("{pad}px"),
+            important: false,
+        };
+        push_decls(&[decl], 1, (0, 0, 0), 0, out);
+    }
+}
+
 fn pick_winners(cands: Vec<Cand>) -> BTreeMap<String, String> {
     let mut best: BTreeMap<String, (Key, String)> = BTreeMap::new();
     for cand in cands {
@@ -437,6 +464,7 @@ fn resolve_style(
 ) -> ComputedStyle {
     let mut cands = Vec::new();
     collect_presentational(element, &mut cands);
+    collect_cellpadding(element, path, &mut cands);
     collect_rules(cascade, path, &mut cands);
     collect_tokens(element, cascade, &mut cands);
     collect_inline(element, &mut cands);

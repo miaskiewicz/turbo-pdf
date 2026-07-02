@@ -483,3 +483,19 @@ fn media_em_breakpoint_uses_16px_root() {
     .unwrap();
     assert_eq!(d.style.get("color"), None);
 }
+
+#[test]
+fn table_cellpadding_pads_its_cells() {
+    // Legacy `cellpadding` on a table applies to its cells (HN's divider bar +
+    // list spacing rely on it); `cellpadding="0"` yields 0.
+    let padded = styled(
+        "<table cellpadding='2'><tr><td id='c'>x</td></tr></table>",
+        "",
+    );
+    assert_eq!(prop(&padded, "c", "padding").as_deref(), Some("2px"));
+    let zero = styled(
+        "<table cellpadding='0'><tr><td id='c'>x</td></tr></table>",
+        "",
+    );
+    assert_eq!(prop(&zero, "c", "padding").as_deref(), Some("0px"));
+}

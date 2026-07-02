@@ -280,12 +280,20 @@ fn column_widths(
     cw: f32,
     fonts: &FontRegistry,
 ) -> Vec<f32> {
-    let explicit = explicit_table_width(style, cw);
+    // `cw` is the table's already-resolved content width (its box was sized from
+    // the `width` declaration upstream), so a table with an explicit width fills
+    // `cw`. Re-resolving the `width` value here would apply a percentage twice
+    // (e.g. an 85%-wide table's columns collapsing to 85% of 85%).
+    let has_width = explicit_table_width(style, cw).is_some();
     if is_fixed(style) {
-        return fixed_columns(placed, ncols, explicit.unwrap_or(cw));
+        return fixed_columns(placed, ncols, cw);
     }
     let mut cols = auto_columns(placed, ncols, fonts);
-    let target = explicit.unwrap_or_else(|| cols.iter().sum::<f32>().min(cw));
+    let target = if has_width {
+        cw
+    } else {
+        cols.iter().sum::<f32>().min(cw)
+    };
     scale_to(&mut cols, target);
     cols
 }

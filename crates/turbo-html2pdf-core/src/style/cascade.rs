@@ -252,6 +252,9 @@ fn pseudo_matches(pseudo: &Pseudo, ctx: &Ctx) -> bool {
         Pseudo::Checked => has_attr(ctx.attrs, "checked"),
         Pseudo::Disabled => has_attr(ctx.attrs, "disabled"),
         Pseudo::Enabled => is_form_control(ctx.tag) && !has_attr(ctx.attrs, "disabled"),
+        Pseudo::Link => {
+            matches!(ctx.tag, Some("a" | "area" | "link")) && has_attr(ctx.attrs, "href")
+        }
         Pseudo::Not(compounds) => !compounds.iter().any(|c| compound_matches(c, ctx)),
         Pseudo::NeverMatch => false,
     }

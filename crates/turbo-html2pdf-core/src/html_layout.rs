@@ -26,6 +26,34 @@ pub fn parse_html(html: &str) -> Result<Vec<Node>, RenderError> {
     crate::template::markup::parse(html)
 }
 
+/// Elements whose text content is *not* visible page content and must not be laid
+/// out as text (their bodies are CSS/JS/metadata, collected separately or dropped).
+fn is_non_visual(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "style" | "script" | "head" | "title" | "meta" | "link" | "noscript" | "template"
+    )
+}
+
+/// Drop non-visual element subtrees (`<style>`/`<script>`/…) so their bodies don't
+/// render as visible text. Author CSS is collected *before* this, so styles still
+/// apply; only their raw text is removed from the flow.
+fn strip_non_visual(nodes: Vec<Node>) -> Vec<Node> {
+    nodes
+        .into_iter()
+        .filter_map(|node| match node {
+            Node::Element(mut el) => {
+                if matches!(&el.tag, Tag::Html(name) if is_non_visual(name)) {
+                    return None;
+                }
+                el.children = strip_non_visual(el.children);
+                Some(Node::Element(el))
+            }
+            other => Some(other),
+        })
+        .collect()
+}
+
 /// Concatenate the text of every `<style>` element in a node forest, in
 /// document order — the page's author stylesheet. Inline `style=` attributes are
 /// applied separately by the cascade, so they are not collected here.
@@ -69,7 +97,7 @@ pub fn layout_html(
     let mut author_css = collect_style_css(&nodes);
     author_css.push_str(extra_css);
     let cascade = build_cascade_with_width(&author_css, "", TokenSet::default(), cb_width);
-    let styled = style_tree(&nodes, &cascade);
+    let styled = style_tree(&strip_non_visual(nodes), &cascade);
     Ok(crate::layout(&styled, cb_width, fonts, diags))
 }
 
@@ -91,7 +119,7 @@ pub fn layout_html_with_images(
     let mut author_css = collect_style_css(&nodes);
     author_css.push_str(extra_css);
     let cascade = build_cascade_with_width(&author_css, "", TokenSet::default(), cb_width);
-    let styled = style_tree(&nodes, &cascade);
+    let styled = style_tree(&strip_non_visual(nodes), &cascade);
     Ok(crate::layout_with_images(
         &styled, cb_width, fonts, images, diags,
     ))

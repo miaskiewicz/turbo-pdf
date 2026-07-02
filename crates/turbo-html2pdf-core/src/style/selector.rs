@@ -52,6 +52,10 @@ pub enum Pseudo {
     Checked,
     Enabled,
     Disabled,
+    /// `:link` / `:any-link` — an unvisited hyperlink (an `<a>`/`<area>`/`<link>`
+    /// with `href`). In a static render every link is unvisited, so this matches
+    /// all of them (and `:visited` never does).
+    Link,
     /// `:not(...)` — matches when the element matches none of the inner compound
     /// selectors (a simple selector list; combinators inside `:not` are not split).
     Not(Vec<Compound>),
@@ -365,12 +369,11 @@ fn parse_pseudo(name: &str, arg: &str) -> Option<Pseudo> {
         "enabled" => Some(Pseudo::Enabled),
         "disabled" => Some(Pseudo::Disabled),
         "not" => Some(Pseudo::Not(parse_not(arg))),
+        "link" | "any-link" => Some(Pseudo::Link),
         // Interactive / dynamic pseudo-classes: valid but never active in a
         // static render, so they never match (their gated styles stay off).
         "hover" | "focus" | "focus-within" | "focus-visible" | "active" | "target" | "visited"
-        | "link" | "any-link" | "autofocus" | "default" | "placeholder-shown" => {
-            Some(Pseudo::NeverMatch)
-        }
+        | "autofocus" | "default" | "placeholder-shown" => Some(Pseudo::NeverMatch),
         // A pseudo-*element* (`::before` etc., seen here as an empty extra `:`
         // segment) or any unknown pseudo: ignored (matches nothing extra).
         _ => None,

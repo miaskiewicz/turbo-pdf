@@ -48,11 +48,13 @@ PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`
   stacked vertically.
 - **CSS Grid layout** (`display: grid`/`inline-grid`). taffy (already the flex
   backend) owns the grid algorithm; the engine maps `grid-template-columns`/
-  `-rows` (`fr`, `px`, `%`, `auto`, and integer `repeat(N, …)` tracks), `gap`/
-  `row-gap`/`column-gap`, and `justify-content`/`align-items`, then places items by
-  auto-placement into the tracks. Explicit `grid-row`/`grid-column` line placement
-  is deferred (items auto-flow). `inline-flex` now also maps to flex. Modern pages
-  are grid/flex-heavy, so this is a large real-page fidelity win.
+  `-rows` (`fr`, `px`/`rem`, `%`, `auto`, `minmax(min, max)`, and integer
+  `repeat(N, …)` tracks), **`grid-template-areas` + `grid-area` named placement**,
+  `gap`/`row-gap`/`column-gap`, and `justify-content`/`align-items`. Items place by
+  `grid-area` name (resolved to line spans) or auto-flow. Named areas are how
+  content-heavy sites (Wikipedia's Vector skin: sidebar + body + rail) lay out.
+  Numeric `grid-row`/`grid-column` line placement is still deferred. `inline-flex`
+  also maps to flex. Modern pages are grid/flex-heavy — a large fidelity win.
 
 - **Legacy presentational attributes** map to CSS (presentational hints, just
   above the UA sheet, below any author rule): `bgcolor` → `background-color`,

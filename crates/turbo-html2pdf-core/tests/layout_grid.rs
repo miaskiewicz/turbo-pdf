@@ -103,6 +103,48 @@ fn repeat_expands_track_list() {
 }
 
 #[test]
+fn named_areas_place_items_by_grid_area() {
+    // `grid-template-areas` + `grid-area` place items into named cells regardless
+    // of DOM order (this is how Wikipedia's Vector skin lays out sidebar + body).
+    let root = grid(
+        &[
+            ("grid-template-columns", "100px 1fr"),
+            ("grid-template-areas", "'side main'"),
+        ],
+        vec![
+            item(&[("grid-area", "main")], "m"), // main first in DOM…
+            item(&[("grid-area", "side")], "s"), // …side second
+        ],
+        400.0,
+    );
+    let its = items_of(&root);
+    let (main, side) = (&its[0], &its[1]);
+    assert!((side.x - 0.0).abs() < 1.0, "side lands in column 1");
+    assert!(
+        (main.x - 100.0).abs() < 1.0,
+        "main lands in column 2 despite coming first in the DOM (got {})",
+        main.x
+    );
+    assert_eq!(main.y, side.y, "same row");
+}
+
+#[test]
+fn minmax_track_fills_remaining_width() {
+    // `100px minmax(0, 1fr)`: fixed 100px sidebar, flexible main fills the rest.
+    let root = grid(
+        &[("grid-template-columns", "100px minmax(0, 1fr)")],
+        vec![item(&[], "a"), item(&[], "b")],
+        400.0,
+    );
+    let its = items_of(&root);
+    assert!((its[0].width - 100.0).abs() < 1.0, "fixed 100px track");
+    assert!(
+        (its[1].width - 300.0).abs() < 1.0,
+        "minmax(0,1fr) takes the rest"
+    );
+}
+
+#[test]
 fn column_gap_spaces_tracks() {
     // Two 1fr columns with a 20px gap in 220px: each column = 100px, second
     // starts at 120px.

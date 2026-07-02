@@ -9,12 +9,14 @@
 //! item's padding/border are folded into the measured border-box, and its margins
 //! are handed to taffy. Per-item `align-self`/`order` are deferred (documented).
 
-use taffy::prelude::{FromLength, TaffyAuto};
-use taffy::style_helpers::{fr, percent};
+use std::collections::HashMap;
+
+use taffy::prelude::{FromLength, FromPercent, TaffyAuto};
+use taffy::style_helpers::{fr, line, minmax, percent};
 use taffy::{
-    AlignItems, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap, JustifyContent,
-    Layout, LengthPercentage, LengthPercentageAuto, NodeId as TaffyId, Rect, Size, Style,
-    TaffyTree, TrackSizingFunction,
+    AlignItems, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap, GridPlacement,
+    JustifyContent, Layout, LengthPercentage, LengthPercentageAuto, Line, MaxTrackSizingFunction,
+    MinTrackSizingFunction, NodeId as TaffyId, Rect, Size, Style, TaffyTree, TrackSizingFunction,
 };
 
 use crate::error::Diagnostics;
@@ -301,10 +303,15 @@ fn gap_axis(s: &ComputedStyle, axis: &str) -> LengthPercentage {
     LengthPercentage::length(px)
 }
 
-/// One grid track: `1fr`, `50%`, `200px`, or `auto`/`min-content`/`max-content`
-/// (all mapped to taffy's `AUTO`, a content-sized track). Unparsable → `AUTO`.
+/// One grid track: `1fr`, `50%`, `200px`/`15.5rem`, `minmax(min, max)`, or
+/// `auto`/`min-content`/`max-content` (→ taffy `AUTO`). Unparsable → `AUTO`.
 fn track_of(tok: &str) -> TrackSizingFunction {
     let t = tok.trim();
+    if let Some(inner) = t.strip_prefix("minmax(").and_then(|x| x.strip_suffix(')')) {
+        if let Some((a, b)) = inner.split_once(',') {
+            return minmax(min_track(a), max_track(b));
+        }
+    }
     if let Some(f) = t
         .strip_suffix("fr")
         .and_then(|x| x.trim().parse::<f32>().ok())
@@ -321,6 +328,135 @@ fn track_of(tok: &str) -> TrackSizingFunction {
         return TrackSizingFunction::from_length(px);
     }
     TrackSizingFunction::AUTO
+}
+
+/// The min side of a `minmax()` (no `fr` allowed): length/`%`, else `auto`.
+fn min_track(t: &str) -> MinTrackSizingFunction {
+    let t = t.trim();
+    if let Some(p) = t
+        .strip_suffix('%')
+        .and_then(|x| x.trim().parse::<f32>().ok())
+    {
+        return MinTrackSizingFunction::from_percent(p / 100.0);
+    }
+    if !t.ends_with("fr") {
+        if let Some(px) = parse_px(t, DEFAULT_FONT_SIZE) {
+            return MinTrackSizingFunction::from_length(px);
+        }
+    }
+    MinTrackSizingFunction::AUTO
+}
+
+/// The max side of a `minmax()`: `fr`/length/`%`, else `auto`.
+fn max_track(t: &str) -> MaxTrackSizingFunction {
+    let t = t.trim();
+    if let Some(f) = t
+        .strip_suffix("fr")
+        .and_then(|x| x.trim().parse::<f32>().ok())
+    {
+        return fr(f);
+    }
+    if let Some(p) = t
+        .strip_suffix('%')
+        .and_then(|x| x.trim().parse::<f32>().ok())
+    {
+        return MaxTrackSizingFunction::from_percent(p / 100.0);
+    }
+    if let Some(px) = parse_px(t, DEFAULT_FONT_SIZE) {
+        return MaxTrackSizingFunction::from_length(px);
+    }
+    MaxTrackSizingFunction::AUTO
+}
+
+/// A `grid-template-areas` map: area name → the grid-line rectangle it covers
+/// `(row_start, row_end, col_start, col_end)`, 0-based cell indices (converted to
+/// 1-based taffy lines at use).
+type AreaMap = HashMap<String, (i16, i16, i16, i16)>;
+
+/// Parse `grid-template-areas: "a b" "a c"` (each quoted string is a row of
+/// space-separated cell names; `.` is an empty cell) into an [`AreaMap`].
+fn grid_areas(value: &str) -> AreaMap {
+    let mut map: AreaMap = HashMap::new();
+    for (r, row) in quoted_rows(value).into_iter().enumerate() {
+        for (c, name) in row.split_whitespace().enumerate() {
+            if name == "." {
+                continue;
+            }
+            let (r, c) = (r as i16, c as i16);
+            let cell = map.entry(name.to_string()).or_insert((r, r, c, c));
+            cell.0 = cell.0.min(r);
+            cell.1 = cell.1.max(r);
+            cell.2 = cell.2.min(c);
+            cell.3 = cell.3.max(c);
+        }
+    }
+    map
+}
+
+/// The quoted row strings of a `grid-template-areas` value (`'…'` or `"…"`).
+fn quoted_rows(value: &str) -> Vec<String> {
+    let mut rows = Vec::new();
+    let mut rest = value;
+    while let Some(open) = rest.find(['"', '\'']) {
+        let quote = rest.as_bytes()[open] as char;
+        rest = &rest[open + 1..];
+        match rest.find(quote) {
+            Some(close) => {
+                rows.push(rest[..close].to_string());
+                rest = &rest[close + 1..];
+            }
+            None => break,
+        }
+    }
+    rows
+}
+
+/// Column count implied by a `grid-template-areas` map (max column line used).
+fn area_cols(areas: &AreaMap) -> usize {
+    areas
+        .values()
+        .map(|&(_, _, _, c1)| c1 as usize + 1)
+        .max()
+        .unwrap_or(0)
+}
+
+/// Row count implied by a `grid-template-areas` map (max row line used).
+fn area_rows(areas: &AreaMap) -> usize {
+    areas
+        .values()
+        .map(|&(_, r1, _, _)| r1 as usize + 1)
+        .max()
+        .unwrap_or(0)
+}
+
+/// Keep explicit `tracks` if present; otherwise synthesize `n` AUTO tracks so a
+/// grid declared only via `grid-template-areas` still has tracks to place into.
+fn fill_tracks(tracks: Vec<TrackSizingFunction>, n: usize) -> Vec<TrackSizingFunction> {
+    if tracks.is_empty() {
+        vec![TrackSizingFunction::AUTO; n]
+    } else {
+        tracks
+    }
+}
+
+/// A grid item's row/column line spans from `grid-area: <name>` resolved against
+/// the container's `grid-template-areas`. `None` when the item names no area (taffy
+/// then auto-places it). Grid lines are 1-based with an exclusive end line.
+fn area_placement(
+    item: &LayoutBox,
+    areas: &AreaMap,
+) -> Option<(Line<GridPlacement>, Line<GridPlacement>)> {
+    let name = item.style.get("grid-area")?.trim();
+    let &(r0, r1, c0, c1) = areas.get(name)?;
+    let row = Line {
+        start: line(r0 + 1),
+        end: line(r1 + 2),
+    };
+    let col = Line {
+        start: line(c0 + 1),
+        end: line(c1 + 2),
+    };
+    Some((row, col))
 }
 
 /// `repeat(N, <tracks>)` expanded into N copies of its track list (integer count
@@ -361,16 +497,18 @@ fn grid_tracks(spec: Option<&str>) -> Vec<TrackSizingFunction> {
     out
 }
 
-fn grid_container_style(container: &LayoutBox, cw: f32) -> Style {
+fn grid_container_style(container: &LayoutBox, cw: f32, areas: &AreaMap) -> Style {
     let s = &container.style;
+    // Explicit tracks, else — when only `grid-template-areas` is given — one AUTO
+    // track per area column/row so named placement still has a grid to land in.
+    let cols = grid_tracks(s.get("grid-template-columns"));
+    let rows = grid_tracks(s.get("grid-template-rows"));
+    let cols = fill_tracks(cols, area_cols(areas));
+    let rows = fill_tracks(rows, area_rows(areas));
     Style {
         display: Display::Grid,
-        grid_template_columns: grid_tracks(s.get("grid-template-columns"))
-            .into_iter()
-            .collect(),
-        grid_template_rows: grid_tracks(s.get("grid-template-rows"))
-            .into_iter()
-            .collect(),
+        grid_template_columns: cols.into_iter().collect(),
+        grid_template_rows: rows.into_iter().collect(),
         gap: Size {
             width: gap_axis(s, "column-gap"),
             height: gap_axis(s, "row-gap"),
@@ -385,9 +523,31 @@ fn grid_container_style(container: &LayoutBox, cw: f32) -> Style {
     }
 }
 
+/// Grid leaves, each carrying its `grid-area` line placement (against `areas`)
+/// on top of the shared item style; unnamed items keep taffy auto-placement.
+fn build_grid_leaves(
+    tree: &mut TaffyTree<usize>,
+    items: &[LayoutBox],
+    fs: f32,
+    areas: &AreaMap,
+) -> Vec<TaffyId> {
+    items
+        .iter()
+        .enumerate()
+        .map(|(i, it)| {
+            let mut style = item_style(it, fs);
+            if let Some((row, col)) = area_placement(it, areas) {
+                style.grid_row = row;
+                style.grid_column = col;
+            }
+            tree.new_leaf_with_context(style, i).expect("grid leaf")
+        })
+        .collect()
+}
+
 /// Lay out a grid container's items into the content box at `(cx, cy)` of width
-/// `cw`. Items are auto-placed into the declared column/row tracks (explicit
-/// `grid-row`/`grid-column` line placement is deferred). Returns galley-absolute
+/// `cw`. Items are placed by `grid-area` (against the container's
+/// `grid-template-areas`) or auto-placed into the tracks. Returns galley-absolute
 /// fragments and the content height.
 pub(crate) fn layout_grid(
     container: &LayoutBox,
@@ -401,10 +561,15 @@ pub(crate) fn layout_grid(
     if items.is_empty() {
         return (Vec::new(), 0.0);
     }
+    let areas = container
+        .style
+        .get("grid-template-areas")
+        .map(grid_areas)
+        .unwrap_or_default();
     let mut tree: TaffyTree<usize> = TaffyTree::new();
-    let leaves = build_leaves(&mut tree, items, fs);
+    let leaves = build_grid_leaves(&mut tree, items, fs, &areas);
     let root = tree
-        .new_with_children(grid_container_style(container, cw), &leaves)
+        .new_with_children(grid_container_style(container, cw, &areas), &leaves)
         .expect("grid root");
     solve(&mut tree, root, items, fs, cw, ctx.fonts);
     let frags = place_items(&tree, &leaves, items, cx, cy, fs, ctx);

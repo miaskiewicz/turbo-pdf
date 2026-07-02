@@ -497,12 +497,55 @@ fn grid_tracks(spec: Option<&str>) -> Vec<TrackSizingFunction> {
     out
 }
 
+/// The track list for one axis: the longhand `grid-template-columns`/`-rows`, or,
+/// if absent, the corresponding side of the `grid-template` / `grid` shorthand
+/// (`<rows> / <cols>`). Parsing the shorthand matters for real pages (e.g.
+/// Wikipedia's Vector `grid-template: … / 12.25rem minmax(0,1fr)`): without it the
+/// axis falls back to AUTO tracks, which with named areas makes taffy content-size
+/// a huge subtree per track — pathologically slow — instead of using fixed tracks.
+fn axis_tracks(s: &ComputedStyle, longhand: &str, want_cols: bool) -> Vec<TrackSizingFunction> {
+    let explicit = grid_tracks(s.get(longhand));
+    if !explicit.is_empty() {
+        return explicit;
+    }
+    grid_tracks(shorthand_axis(s, want_cols).as_deref())
+}
+
+/// The rows (`before /`) or columns (`after /`) side of a `grid-template` / `grid`
+/// shorthand, with any quoted `grid-template-areas` row strings stripped out.
+fn shorthand_axis(s: &ComputedStyle, want_cols: bool) -> Option<String> {
+    let value = s.get("grid-template").or_else(|| s.get("grid"))?;
+    let (rows, cols) = value.split_once('/')?;
+    let part = strip_quoted(if want_cols { cols } else { rows });
+    let part = part.trim();
+    (!part.is_empty()).then(|| part.to_string())
+}
+
+/// Remove single/double-quoted segments (area-template rows) from a value.
+fn strip_quoted(value: &str) -> String {
+    let mut out = String::new();
+    let mut chars = value.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '"' || ch == '\'' {
+            for c in chars.by_ref() {
+                if c == ch {
+                    break;
+                }
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 fn grid_container_style(container: &LayoutBox, cw: f32, areas: &AreaMap) -> Style {
     let s = &container.style;
-    // Explicit tracks, else — when only `grid-template-areas` is given — one AUTO
-    // track per area column/row so named placement still has a grid to land in.
-    let cols = grid_tracks(s.get("grid-template-columns"));
-    let rows = grid_tracks(s.get("grid-template-rows"));
+    // Explicit tracks (longhand or the `grid-template` shorthand), else — when only
+    // `grid-template-areas` is given — one AUTO track per area column/row so named
+    // placement still has a grid to land in.
+    let cols = axis_tracks(s, "grid-template-columns", true);
+    let rows = axis_tracks(s, "grid-template-rows", false);
     let cols = fill_tracks(cols, area_cols(areas));
     let rows = fill_tracks(rows, area_rows(areas));
     Style {

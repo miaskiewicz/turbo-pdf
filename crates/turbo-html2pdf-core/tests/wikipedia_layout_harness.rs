@@ -228,3 +228,37 @@ fn navbox_nested_subgroup_has_height() {
         f.bottom()
     );
 }
+
+// --------------------------------------------------------------------------
+// harness 5: grid-template shorthand (Vector's main 2-column layout)
+// --------------------------------------------------------------------------
+
+#[test]
+fn grid_template_shorthand_sets_fixed_tracks() {
+    // Vector lays its page out with `grid-template: <rows> / <cols>` + named areas
+    // (`grid-template: min-content 1fr / 12.25rem minmax(0,1fr)`). The shorthand
+    // must yield the column tracks, so the fixed sidebar column stays fixed. Before
+    // the fix the axis fell back to AUTO tracks which, with named areas, made taffy
+    // content-size the whole subtree per track — a pathological hang.
+    let html = r#"<body><style>
+        .page { display: grid; grid-template: min-content 1fr / 200px minmax(0,1fr);
+                grid-template-areas: 'head head' 'side main' }
+        .side { grid-area: side; background-color:#ff0000; height:50px }
+        .main { grid-area: main; background-color:#00ff00; height:50px }
+      </style>
+      <div class="page"><div class="side"></div><div class="main"></div></div></body>"#;
+    let f = lay(html, 1000.0);
+    let side = rect(&f, RED).expect("sidebar");
+    let main = rect(&f, GREEN).expect("main");
+    assert!(
+        (side[2] - 200.0).abs() < 3.0,
+        "fixed sidebar track = 200px, got {}",
+        side[2]
+    );
+    // main sits to the right of the sidebar (2-column), same row.
+    assert!(main[0] >= side[0] + side[2] - 1.0, "main right of sidebar");
+    assert!(
+        (side[1] - main[1]).abs() < 2.0,
+        "sidebar + main share the row"
+    );
+}

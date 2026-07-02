@@ -370,6 +370,89 @@ fn auto_width_inline_block_shrinks_to_content() {
     );
 }
 
+/// A floated probe box: distinct background + explicit size.
+fn fl(side: &str, w: &str, c: &str) -> StyledNode {
+    el(
+        "div",
+        &[
+            ("float", side),
+            ("width", w),
+            ("height", "30px"),
+            ("background-color", c),
+        ],
+        vec![],
+    )
+}
+
+#[test]
+fn left_floats_pack_side_by_side() {
+    // Two `float:left` boxes sit on one row at the left edge (not stacked).
+    let root = lay(
+        &[el(
+            "div",
+            &[],
+            vec![fl("left", "60px", "#ff0000"), fl("left", "60px", "#00ff00")],
+        )],
+        500.0,
+    );
+    let bx = bg_boxes(&root);
+    assert_eq!(bx.len(), 2);
+    assert_eq!(bx[0].y, bx[1].y, "same row");
+    assert!((bx[0].x - 0.0).abs() < 1.0, "first at the left edge");
+    assert!((bx[1].x - 60.0).abs() < 1.0, "second packed right after it");
+}
+
+#[test]
+fn left_and_right_floats_go_to_opposite_edges() {
+    let root = lay(
+        &[el(
+            "div",
+            &[],
+            vec![
+                fl("left", "80px", "#ff0000"),
+                fl("right", "80px", "#00ff00"),
+            ],
+        )],
+        500.0,
+    );
+    let bx = bg_boxes(&root);
+    assert!((bx[0].x - 0.0).abs() < 1.0, "left float at x=0");
+    assert!(
+        (bx[1].x - (500.0 - 80.0)).abs() < 1.0,
+        "right float at the right edge (got {})",
+        bx[1].x
+    );
+    assert_eq!(bx[0].y, bx[1].y, "same band row");
+}
+
+#[test]
+fn in_flow_content_clears_below_floats() {
+    // A `float:left` box, then an in-flow paragraph: the paragraph clears below
+    // the float band (pragmatic model) rather than overlapping it.
+    let root = lay(
+        &[el(
+            "div",
+            &[],
+            vec![
+                fl("left", "80px", "#ff0000"),
+                el("p", &[], vec![txt("after")]),
+            ],
+        )],
+        500.0,
+    );
+    let floatbox = &bg_boxes(&root)[0];
+    let line = all(&root)
+        .into_iter()
+        .find(|f| matches!(f.content, FragmentContent::TextLine { .. }))
+        .expect("paragraph line");
+    assert!(
+        line.y >= floatbox.y + floatbox.height - 1.0,
+        "in-flow text clears below the float (float bottom {}, text y {})",
+        floatbox.y + floatbox.height,
+        line.y
+    );
+}
+
 #[test]
 fn empty_registry_renders_no_text_lines() {
     let root = build_box_tree(&[el("p", &[], vec![txt("hi")])]);

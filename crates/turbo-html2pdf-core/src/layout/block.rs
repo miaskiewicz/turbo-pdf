@@ -20,7 +20,8 @@ use super::fragment::{BreakMeta, Fragment, FragmentContent, ImagePlacement, Node
 use super::imgsize::{size_replaced, SizeCtx, SizedImage};
 use super::inline::{self, InlineRun};
 use super::value::{
-    resolve_box_style, BoxSizing, BoxStyle, LengthPct, Position, ResolveCtx, DEFAULT_FONT_SIZE,
+    resolve_box_style, BoxSizing, BoxStyle, Float, LengthPct, Position, ResolveCtx,
+    DEFAULT_FONT_SIZE,
 };
 use super::ImageCtx;
 
@@ -346,6 +347,7 @@ fn layout_block_flow(
     let mut frags = Vec::new();
     let mut cursor = cy;
     let mut pending = 0.0_f32;
+    let mut band = FloatBand::default();
     for kid in kids {
         let kbs = resolve(kid, cw, fs);
         // `absolute`/`fixed`: taken out of flow — laid out at the containing
@@ -354,6 +356,23 @@ fn layout_block_flow(
             let (bx, by) = out_of_flow_origin(&kbs, cw, ctx);
             frags.push(layout_box(kid, bx, by, cw, fs, ctx));
             continue;
+        }
+        // `float:left/right`: packed to the edge in a float band; contributes no
+        // cursor advance. Following in-flow content clears below the band.
+        if kbs.float != Float::None {
+            if !band.any {
+                band.top = cursor + pending;
+                band.bottom = band.top;
+            }
+            frags.push(place_float(kid, &kbs, cx, cw, fs, &mut band, ctx));
+            continue;
+        }
+        // In-flow content after floats clears below the band (pragmatic: it stacks
+        // below rather than wrapping beside — avoids overlap without per-line wrap).
+        if band.any && band.bottom > cursor + pending {
+            cursor = band.bottom;
+            pending = 0.0;
+            band = FloatBand::default();
         }
         // `relative`: flows normally (its space is reserved via the cursor) but
         // is painted shifted by its insets, so lay it out at the shifted origin.
@@ -374,7 +393,72 @@ fn layout_block_flow(
         }
         frags.push(frag);
     }
-    (frags, cursor - cy)
+    // The block is as tall as its in-flow content or its floats, whichever is lower.
+    let bottom = if band.any {
+        cursor.max(band.bottom)
+    } else {
+        cursor
+    };
+    (frags, bottom - cy)
+}
+
+/// A float band: floated boxes packed from the left and right edges of a row,
+/// wrapping to a new row (below the tallest float so far) when full. `top` is the
+/// absolute y of the current row; `bottom` the lowest float edge placed so far.
+#[derive(Default)]
+struct FloatBand {
+    left: f32,
+    right: f32,
+    top: f32,
+    bottom: f32,
+    any: bool,
+}
+
+/// Lay a floated box into the band: size it (shrink-to-fit for auto width), pack
+/// it to its edge, wrapping to a new row when the row is full, and grow the band.
+fn place_float(
+    kid: &LayoutBox,
+    kbs: &BoxStyle,
+    cx: f32,
+    cw: f32,
+    fs: f32,
+    band: &mut FloatBand,
+    ctx: &mut Ctx,
+) -> Fragment {
+    let replaced = kid.image.as_ref().is_some_and(|s| s.replaced);
+    let shrink = !replaced && kbs.width.resolve(cw).is_none();
+    let w = if shrink {
+        super::flex::natural_width(kid, ctx.fonts).min(cw)
+    } else {
+        border_box_width(kbs, cw)
+    };
+    // Wrap to a new band row (below the tallest float so far) when full.
+    if (band.left > 0.0 || band.right > 0.0) && band.left + band.right + w > cw {
+        band.top = band.bottom;
+        band.left = 0.0;
+        band.right = 0.0;
+    }
+    let bx = match kbs.float {
+        Float::Right => cx + cw - band.right - w,
+        _ => cx + band.left,
+    };
+    let mut f = if shrink {
+        layout_box_sized(kid, kbs, bx, band.top, w, ctx)
+    } else {
+        layout_box(kid, bx, band.top, cw, fs, ctx)
+    };
+    // Re-anchor a right float to the true right edge if its laid width differs.
+    if kbs.float == Float::Right && (f.width - w).abs() > 0.5 {
+        let target = cx + cw - band.right - f.width;
+        f.translate(target - f.x, 0.0);
+    }
+    match kbs.float {
+        Float::Right => band.right += f.width,
+        _ => band.left += f.width,
+    }
+    band.bottom = band.bottom.max(band.top + f.height);
+    band.any = true;
+    f
 }
 
 fn layout_content(

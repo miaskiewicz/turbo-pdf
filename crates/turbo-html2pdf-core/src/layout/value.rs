@@ -418,6 +418,17 @@ impl Position {
     }
 }
 
+/// CSS `float`. A floated box is pulled out of block flow and packed to the left
+/// or right edge; following in-flow content clears below the float row (a
+/// pragmatic model — no per-line text wrap around a float).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Float {
+    #[default]
+    None,
+    Left,
+    Right,
+}
+
 /// The fully typed style a box uses for layout, resolved from a [`ComputedStyle`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct BoxStyle {
@@ -431,6 +442,8 @@ pub struct BoxStyle {
     pub inset_left: LengthPct,
     /// `z-index` paint order within the stacking context; `None` = `auto`.
     pub z_index: Option<i32>,
+    /// CSS `float` (packs the box to the left/right edge, out of block flow).
+    pub float: Float,
     pub margin: Edges,
     pub padding: Edges,
     pub border: BorderEdges,
@@ -504,6 +517,15 @@ pub fn position_of(s: &ComputedStyle) -> Position {
         Some("fixed") => Position::Fixed,
         Some("sticky") => Position::Sticky,
         _ => Position::Static,
+    }
+}
+
+/// The CSS `float` of a box (`left`/`right`, else `none`).
+pub fn float_of(s: &ComputedStyle) -> Float {
+    match s.get("float").map(str::trim) {
+        Some("left") => Float::Left,
+        Some("right") => Float::Right,
+        _ => Float::None,
     }
 }
 
@@ -703,6 +725,7 @@ fn resolve_box_metrics(s: &ComputedStyle, fs: f32, ctx: ResolveCtx) -> BoxStyle 
     BoxStyle {
         display: display_of(s),
         position: position_of(s),
+        float: float_of(s),
         inset_top: length_prop(s, "top", fs, LengthPct::Auto),
         inset_right: length_prop(s, "right", fs, LengthPct::Auto),
         inset_bottom: length_prop(s, "bottom", fs, LengthPct::Auto),

@@ -34,6 +34,12 @@ PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`
   boxes sized into `Image` fragments to paint. Unresolvable images fall back to
   the image-free box exactly as `layout_html`.
 
+- **`float: left`/`right`** (was ignored → boxes stacked full-width). Floated
+  boxes are pulled out of block flow and packed to the left/right edge in a float
+  band (wrapping to a new row when full; auto-width floats shrink to content).
+  Following in-flow content clears below the band. A pragmatic model — no per-line
+  text wrap around a float — but it fixes float-based columns / horizontal float
+  navs that previously stacked vertically.
 - **`inline-block` flows horizontally** (was stacked one-per-row). Atomic inlines
   now lay left-to-right on a row and wrap when the row fills; an auto-width
   `inline-block` shrinks to its content (via the flex `natural_width` measurement)

@@ -15,7 +15,7 @@
 use crate::layout::fragment::Fragment;
 use crate::layout::ImageCtx;
 use crate::node::{Node, Tag};
-use crate::style::{build_cascade, style_tree, TokenSet};
+use crate::style::{build_cascade_with_width, style_tree, TokenSet};
 use crate::text::FontRegistry;
 use crate::{Diagnostics, RenderError};
 
@@ -68,7 +68,7 @@ pub fn layout_html(
     let nodes = parse_html(html)?;
     let mut author_css = collect_style_css(&nodes);
     author_css.push_str(extra_css);
-    let cascade = build_cascade(&author_css, "", TokenSet::default());
+    let cascade = build_cascade_with_width(&author_css, "", TokenSet::default(), cb_width);
     let styled = style_tree(&nodes, &cascade);
     Ok(crate::layout(&styled, cb_width, fonts, diags))
 }
@@ -90,7 +90,7 @@ pub fn layout_html_with_images(
     let nodes = parse_html(html)?;
     let mut author_css = collect_style_css(&nodes);
     author_css.push_str(extra_css);
-    let cascade = build_cascade(&author_css, "", TokenSet::default());
+    let cascade = build_cascade_with_width(&author_css, "", TokenSet::default(), cb_width);
     let styled = style_tree(&nodes, &cascade);
     Ok(crate::layout_with_images(
         &styled, cb_width, fonts, images, diags,

@@ -52,6 +52,9 @@ pub use paginate::{
     Note, Page, PageGeometry, PageKind,
 };
 pub use render::{render_pages, PageContext, RenderInputs};
-pub use style::{build_cascade, style_tree, Cascade, ComputedStyle, StyledElement, StyledNode};
+pub use style::{
+    build_cascade, build_cascade_with_width, style_tree, Cascade, ComputedStyle, StyledElement,
+    StyledNode,
+};
 pub use template::{compile, set_now, Program};
 pub use text::{layout_text, Align, FontFace, FontRegistry, LineBox, TextStyle, WhiteSpace};

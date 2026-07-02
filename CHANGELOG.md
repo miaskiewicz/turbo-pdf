@@ -62,6 +62,17 @@ PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`
   (Hacker News' orange `<td bgcolor>` header, sized `<img>`) now paint their
   backgrounds/sizes.
 
+- **`@media` queries are now applied** (were parsed then dropped, so every rule
+  inside a media block was ignored — i.e. the entire responsive/desktop layer of
+  real sites). A matching `@media` block's rules join the cascade at their sheet's
+  level (after the top-level rules). Conditions supported: comma lists (OR), the
+  `screen`/`all` types (`print` never matches — we render screen), and
+  `min-width`/`max-width` in `px`/`em`/`rem`. Width is evaluated against the
+  viewport: `build_cascade` defaults to 1280px desktop; new
+  `build_cascade_with_width` lets the screenshot tier pass its real viewport so
+  responsive stylesheets pick the right breakpoint (this is what lets Wikipedia's
+  desktop grid layout apply at all).
+
 ### Fixed
 - **`background` shorthand is now honored.** The cascade only read the
   `background-color`/`background-image` longhands, so `background: #fff url(...)

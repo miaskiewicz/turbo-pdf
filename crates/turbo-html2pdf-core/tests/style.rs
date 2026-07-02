@@ -417,3 +417,69 @@ fn width_height_attributes_map_to_lengths() {
     assert_eq!(img.style.get("width"), Some("200px"));
     assert_eq!(img.style.get("height"), Some("50%"));
 }
+
+// ---------------------------------------------------------------- @media queries
+
+fn styled_at_width(tpl: &str, css: &str, width: f32) -> Vec<StyledNode> {
+    use turbo_html2pdf_core::build_cascade_with_width;
+    let nodes = render_nodes(tpl);
+    let cascade = build_cascade_with_width(css, "", TokenSet::new(), width);
+    style_tree(&nodes, &cascade)
+}
+
+#[test]
+fn media_min_width_applies_above_breakpoint() {
+    let css = "div { color: red } @media (min-width: 1000px) { div { color: green } }";
+    // Wide viewport: the @media rule wins.
+    let wide = styled_at_width("<div>x</div>", css, 1280.0);
+    let d = find(
+        &wide,
+        &|e| matches!(&e.tag, turbo_html2pdf_core::Tag::Html(t) if t == "div"),
+    )
+    .unwrap();
+    assert_eq!(d.style.get("color"), Some("green"));
+    // Narrow viewport: the @media block is dropped, base rule stands.
+    let narrow = styled_at_width("<div>x</div>", css, 500.0);
+    let d = find(
+        &narrow,
+        &|e| matches!(&e.tag, turbo_html2pdf_core::Tag::Html(t) if t == "div"),
+    )
+    .unwrap();
+    assert_eq!(d.style.get("color"), Some("red"));
+}
+
+#[test]
+fn media_print_is_dropped_for_screen() {
+    let css = "@media print { div { color: red } }";
+    let tree = styled_at_width("<div>x</div>", css, 1280.0);
+    let d = find(
+        &tree,
+        &|e| matches!(&e.tag, turbo_html2pdf_core::Tag::Html(t) if t == "div"),
+    )
+    .unwrap();
+    assert_eq!(
+        d.style.get("color"),
+        None,
+        "print-only rules never match screen"
+    );
+}
+
+#[test]
+fn media_em_breakpoint_uses_16px_root() {
+    // 66.5em = 1064px; matches at 1280, not at 1000.
+    let css = "@media (min-width: 66.5em) { div { color: green } }";
+    let at1280 = styled_at_width("<div>x</div>", css, 1280.0);
+    let d = find(
+        &at1280,
+        &|e| matches!(&e.tag, turbo_html2pdf_core::Tag::Html(t) if t == "div"),
+    )
+    .unwrap();
+    assert_eq!(d.style.get("color"), Some("green"));
+    let at1000 = styled_at_width("<div>x</div>", css, 1000.0);
+    let d = find(
+        &at1000,
+        &|e| matches!(&e.tag, turbo_html2pdf_core::Tag::Html(t) if t == "div"),
+    )
+    .unwrap();
+    assert_eq!(d.style.get("color"), None);
+}

@@ -56,6 +56,75 @@ fn add_leveled(rules: &mut Vec<LeveledRule>, order: &mut usize, level: u8, sheet
         });
         *order += 1;
     }
+    // `@media` blocks whose condition matches the viewport contribute their rules
+    // at the same level, after the sheet's top-level rules (so they win on order,
+    // as in CSS). Non-matching / non-`screen` blocks are dropped. Nested at-rules
+    // inside a matched block are handled one level deep (the common case).
+    for at in sheet.at_rules {
+        if at.name == "media" && media_matches(&at.prelude, VIEWPORT_WIDTH.get()) {
+            add_leveled(rules, order, level, parse_stylesheet(&at.body));
+        }
+    }
+}
+
+/// The viewport width (px) `@media` width conditions are evaluated against for the
+/// current cascade build. A thread-local so `build_cascade`'s signature (used by
+/// many callers) stays unchanged; the screenshot path sets it per render via
+/// [`build_cascade_with_width`].
+mod viewport {
+    use std::cell::Cell;
+    thread_local!(static WIDTH: Cell<f32> = const { Cell::new(1280.0) });
+    pub(super) struct ViewportWidth;
+    impl ViewportWidth {
+        pub(super) fn get(&self) -> f32 {
+            WIDTH.with(Cell::get)
+        }
+        pub(super) fn set(&self, w: f32) {
+            WIDTH.with(|c| c.set(w));
+        }
+    }
+}
+static VIEWPORT_WIDTH: viewport::ViewportWidth = viewport::ViewportWidth;
+
+/// Whether a `@media` query's condition matches `width` (px). Supports a comma
+/// list (any clause matches), the `screen`/`all` types (`print` never matches;
+/// no/other type is treated as applicable), and `min-width`/`max-width` features
+/// in `px`/`em`/`rem` (`em`/`rem` against a 16px root). Other features are ignored
+/// (a clause with only unknown features still matches if its type does).
+fn media_matches(query: &str, width: f32) -> bool {
+    let q = query.to_ascii_lowercase();
+    q.split(',')
+        .any(|clause| clause_matches(clause.trim(), width))
+}
+
+fn clause_matches(clause: &str, width: f32) -> bool {
+    if clause.contains("print") {
+        return false;
+    }
+    for feat in clause.split("and") {
+        let feat = feat.trim();
+        if let Some(min) = feature_len(feat, "min-width") {
+            if width < min {
+                return false;
+            }
+        }
+        if let Some(max) = feature_len(feat, "max-width") {
+            if width > max {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// The px value of a `(min-width: …)` / `(max-width: …)` feature in `clause`.
+fn feature_len(feat: &str, name: &str) -> Option<f32> {
+    let rest = feat.split_once(name)?.1.trim_start();
+    let val = rest.strip_prefix(':')?.trim().trim_end_matches([')', ' ']);
+    if let Some(em) = val.strip_suffix("rem").or_else(|| val.strip_suffix("em")) {
+        return em.trim().parse::<f32>().ok().map(|n| n * 16.0);
+    }
+    val.trim_end_matches("px").trim().parse::<f32>().ok()
 }
 
 /// The user-agent stylesheet, parsed once. It is a fixed constant, so parsing it
@@ -73,4 +142,19 @@ pub fn build_cascade(author_css: &str, node_style_css: &str, tokens: TokenSet) -
     add_leveled(&mut rules, &mut order, 1, parse_stylesheet(author_css));
     add_leveled(&mut rules, &mut order, 3, parse_stylesheet(node_style_css));
     Cascade { rules, tokens }
+}
+
+/// Like [`build_cascade`] but evaluates `@media` width conditions against
+/// `viewport_width` px (instead of the 1280px desktop default). The screenshot
+/// tier passes its viewport so responsive stylesheets pick the right breakpoint.
+pub fn build_cascade_with_width(
+    author_css: &str,
+    node_style_css: &str,
+    tokens: TokenSet,
+    viewport_width: f32,
+) -> Cascade {
+    VIEWPORT_WIDTH.set(viewport_width);
+    let cascade = build_cascade(author_css, node_style_css, tokens);
+    VIEWPORT_WIDTH.set(1280.0);
+    cascade
 }

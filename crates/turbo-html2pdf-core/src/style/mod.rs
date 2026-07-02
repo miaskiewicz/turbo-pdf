@@ -46,6 +46,9 @@ tr { display: table-row }
 td, th { display: table-cell }
 li { display: list-item }
 center { display: block; text-align: center }
+input { display: inline-block; width: 150px; height: 1.4em; border: 1px solid #a9a9a9; background-color: #ffffff }
+textarea { display: inline-block; width: 200px; height: 3em; border: 1px solid #a9a9a9; background-color: #ffffff }
+select, button { display: inline-block; border: 1px solid #a9a9a9; background-color: #efefef }
 ";
 
 fn add_leveled(rules: &mut Vec<LeveledRule>, order: &mut usize, level: u8, sheet: Stylesheet) {

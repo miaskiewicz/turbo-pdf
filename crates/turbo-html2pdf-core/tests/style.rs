@@ -209,19 +209,25 @@ fn universal_selector_matches_all() {
 
 #[test]
 fn unknown_pseudo_class_is_ignored() {
+    // A genuinely unknown pseudo-class is dropped, and the rest of the compound
+    // still matches (lenient parsing).
     let tree = styled(
         r#"<a id="e">x</a><p id="p">y</p>"#,
-        "a:hover { color: red }",
+        "a:totallyunknown { color: red }",
     );
     assert_eq!(prop(&tree, "e", "color").as_deref(), Some("red"));
     assert_eq!(prop(&tree, "p", "color"), None);
 }
 
 #[test]
-fn unrecognized_selector_chars_are_skipped() {
-    // Sibling combinators are deferred; stray chars are tolerated, not fatal.
-    let tree = styled(r#"<div id="e">x</div>"#, "div+span { color: red }");
-    assert_eq!(prop(&tree, "e", "color").as_deref(), Some("red"));
+fn next_sibling_combinator_tight() {
+    // `div+span` (no spaces) matches a span immediately after a div.
+    let tree = styled(
+        r#"<div id="d">x</div><span id="s">y</span>"#,
+        "div+span { color: red }",
+    );
+    assert_eq!(prop(&tree, "d", "color"), None);
+    assert_eq!(prop(&tree, "s", "color").as_deref(), Some("red"));
 }
 
 // --------------------------------------------------------------------------
@@ -498,4 +504,73 @@ fn table_cellpadding_pads_its_cells() {
         "",
     );
     assert_eq!(prop(&zero, "c", "padding").as_deref(), Some("0px"));
+}
+
+#[test]
+fn next_sibling_combinator() {
+    let css = "p + p { color: red }";
+    let n = styled("<div><p id='a'>1</p><p id='b'>2</p></div>", css);
+    assert_eq!(prop(&n, "a", "color"), None, "first p has no preceding p");
+    assert_eq!(prop(&n, "b", "color").as_deref(), Some("red"));
+}
+
+#[test]
+fn subsequent_sibling_combinator() {
+    let css = ".x ~ p { color: red }";
+    let n = styled(
+        "<div><p id='a'>1</p><span class='x'></span><p id='b'>2</p><p id='c'>3</p></div>",
+        css,
+    );
+    assert_eq!(prop(&n, "a", "color"), None, "p before .x unaffected");
+    assert_eq!(prop(&n, "b", "color").as_deref(), Some("red"));
+    assert_eq!(prop(&n, "c", "color").as_deref(), Some("red"));
+}
+
+#[test]
+fn not_pseudo_excludes() {
+    let css = "p:not(.skip) { color: red }";
+    let n = styled(
+        "<div><p id='a'>1</p><p id='b' class='skip'>2</p></div>",
+        css,
+    );
+    assert_eq!(prop(&n, "a", "color").as_deref(), Some("red"));
+    assert_eq!(prop(&n, "b", "color"), None, "skipped p not matched");
+}
+
+#[test]
+fn hover_never_matches_in_static_render() {
+    let css = "a:hover { color: red }";
+    let n = styled("<div><a id='a' href='#'>x</a></div>", css);
+    // `a` keeps its UA blue — the hover rule is inert at rest, not applied.
+    assert_ne!(prop(&n, "a", "color").as_deref(), Some("red"));
+}
+
+#[test]
+fn checked_gates_sibling_reveal_like_wikipedia_dropdowns() {
+    // Wikipedia's dropdowns: hidden by default, revealed by
+    // `input:checked ~ .content`. An unchecked checkbox must leave them hidden.
+    let css = ".c { visibility: hidden } input:checked ~ .c { visibility: visible }";
+    let closed = styled(
+        "<div><input type='checkbox'><span id='s' class='c'>menu</span></div>",
+        css,
+    );
+    assert_eq!(prop(&closed, "s", "visibility").as_deref(), Some("hidden"));
+    let open = styled(
+        "<div><input type='checkbox' checked><span id='s' class='c'>menu</span></div>",
+        css,
+    );
+    assert_eq!(prop(&open, "s", "visibility").as_deref(), Some("visible"));
+}
+
+#[test]
+fn nth_child_still_parses_with_paren_arg() {
+    // `2n+1` — the `+` inside the pseudo arg must not lex as a combinator.
+    let css = "li:nth-child(2n+1) { color: red }";
+    let n = styled(
+        "<ul><li id='a'>1</li><li id='b'>2</li><li id='c'>3</li></ul>",
+        css,
+    );
+    assert_eq!(prop(&n, "a", "color").as_deref(), Some("red"));
+    assert_eq!(prop(&n, "b", "color"), None);
+    assert_eq!(prop(&n, "c", "color").as_deref(), Some("red"));
 }

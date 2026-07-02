@@ -119,6 +119,7 @@ const INHERITED: &[&str] = &[
 struct ElemPos {
     index: usize,
     of_type_index: usize,
+    of_type_total: usize,
     siblings: usize,
 }
 
@@ -129,6 +130,12 @@ struct Ctx<'a> {
     classes: Vec<&'a str>,
     attrs: &'a [Attr],
     pos: ElemPos,
+    /// Whether the element has no element/text children (`:empty`).
+    empty: bool,
+    /// Preceding element siblings in document order (for the `+`/`~` combinators).
+    /// Each carries an empty `prev`; the matcher re-slices this list when it steps
+    /// left across a sibling combinator.
+    prev: Vec<Ctx<'a>>,
 }
 
 fn html_name(element: &Element) -> Option<&str> {
@@ -145,7 +152,7 @@ fn tag_key(element: &Element) -> String {
     }
 }
 
-fn ctx_of<'a>(element: &'a Element, pos: ElemPos) -> Ctx<'a> {
+fn ctx_of<'a>(element: &'a Element, pos: ElemPos, prev: Vec<Ctx<'a>>) -> Ctx<'a> {
     Ctx {
         tag: html_name(element),
         id: element.attr("id"),
@@ -156,6 +163,8 @@ fn ctx_of<'a>(element: &'a Element, pos: ElemPos) -> Ctx<'a> {
             .unwrap_or_default(),
         attrs: &element.attrs,
         pos,
+        empty: element.children.is_empty(),
+        prev,
     }
 }
 
@@ -175,9 +184,11 @@ fn element_positions(nodes: &[Node]) -> Vec<Option<ElemPos>> {
 
 fn position_for(order: usize, key: &str, elems: &[(usize, String)], siblings: usize) -> ElemPos {
     let of_type_index = elems[..=order].iter().filter(|(_, k)| k == key).count();
+    let of_type_total = elems.iter().filter(|(_, k)| k == key).count();
     ElemPos {
         index: order + 1,
         of_type_index,
+        of_type_total,
         siblings,
     }
 }
@@ -225,13 +236,36 @@ fn nth_match(a: i32, b: i32, index: usize) -> bool {
     n % a == 0 && n / a >= 0
 }
 
-fn pseudo_matches(pseudo: &Pseudo, pos: ElemPos) -> bool {
+fn pseudo_matches(pseudo: &Pseudo, ctx: &Ctx) -> bool {
+    let pos = ctx.pos;
     match pseudo {
         Pseudo::FirstChild => pos.index == 1,
         Pseudo::LastChild => pos.index == pos.siblings,
+        Pseudo::OnlyChild => pos.siblings == 1,
+        Pseudo::FirstOfType => pos.of_type_index == 1,
+        Pseudo::LastOfType => pos.of_type_index == pos.of_type_total,
+        Pseudo::OnlyOfType => pos.of_type_total == 1,
         Pseudo::NthChild(a, b) => nth_match(*a, *b, pos.index),
         Pseudo::NthOfType(a, b) => nth_match(*a, *b, pos.of_type_index),
+        Pseudo::Root => ctx.tag == Some("html"),
+        Pseudo::Empty => ctx.empty,
+        Pseudo::Checked => has_attr(ctx.attrs, "checked"),
+        Pseudo::Disabled => has_attr(ctx.attrs, "disabled"),
+        Pseudo::Enabled => is_form_control(ctx.tag) && !has_attr(ctx.attrs, "disabled"),
+        Pseudo::Not(compounds) => !compounds.iter().any(|c| compound_matches(c, ctx)),
+        Pseudo::NeverMatch => false,
     }
+}
+
+fn has_attr(attrs: &[Attr], name: &str) -> bool {
+    attrs.iter().any(|a| a.name.eq_ignore_ascii_case(name))
+}
+
+fn is_form_control(tag: Option<&str>) -> bool {
+    matches!(
+        tag,
+        Some("input" | "button" | "select" | "textarea" | "option")
+    )
 }
 
 fn tag_ok(compound: &Compound, ctx: &Ctx) -> bool {
@@ -260,7 +294,7 @@ fn compound_matches(compound: &Compound, ctx: &Ctx) -> bool {
         && id_ok(compound, ctx)
         && classes_ok(compound, ctx)
         && compound.attrs.iter().all(|a| attr_matches(a, ctx.attrs))
-        && compound.pseudos.iter().all(|p| pseudo_matches(p, ctx.pos))
+        && compound.pseudos.iter().all(|p| pseudo_matches(p, ctx))
 }
 
 fn match_child(sel: &Selector, ci: usize, path: &[Ctx], pi: usize) -> bool {
@@ -276,6 +310,31 @@ fn match_descendant(sel: &Selector, ci: usize, path: &[Ctx], pi: usize) -> bool 
     })
 }
 
+/// Match compound `ci-1` against a preceding sibling of the element at `path[pi]`,
+/// then continue the selector from that sibling. `immediate` restricts to the
+/// directly-preceding sibling (`+`); otherwise any earlier sibling (`~`).
+fn match_sibling(sel: &Selector, ci: usize, path: &[Ctx], pi: usize, immediate: bool) -> bool {
+    let sibs = &path[pi].prev;
+    let range = if immediate {
+        sibs.len().saturating_sub(1)..sibs.len()
+    } else {
+        0..sibs.len()
+    };
+    range.rev().any(|k| {
+        if !compound_matches(&sel.compounds[ci - 1], &sibs[k]) {
+            return false;
+        }
+        // Continue the match from the sibling at the same depth: reuse the shared
+        // ancestors, and give the sibling its own preceding siblings so chained
+        // sibling combinators (`a ~ b + c`) keep working.
+        let mut sp = path[..pi].to_vec();
+        let mut sib = sibs[k].clone();
+        sib.prev = sibs[..k].to_vec();
+        sp.push(sib);
+        match_ancestors(sel, ci - 1, &sp, pi)
+    })
+}
+
 fn match_ancestors(sel: &Selector, ci: usize, path: &[Ctx], pi: usize) -> bool {
     if ci == 0 {
         return true;
@@ -283,6 +342,8 @@ fn match_ancestors(sel: &Selector, ci: usize, path: &[Ctx], pi: usize) -> bool {
     match sel.combinators[ci - 1] {
         Combinator::Child => match_child(sel, ci, path, pi),
         Combinator::Descendant => match_descendant(sel, ci, path, pi),
+        Combinator::NextSibling => match_sibling(sel, ci, path, pi, true),
+        Combinator::SubsequentSibling => match_sibling(sel, ci, path, pi, false),
     }
 }
 
@@ -479,11 +540,12 @@ fn style_element<'a>(
     element: &'a Element,
     pos: ElemPos,
     ancestors: &[Ctx<'a>],
+    prev: Vec<Ctx<'a>>,
     parent: &ComputedStyle,
     cascade: &Cascade,
 ) -> StyledNode {
     let mut path = ancestors.to_vec();
-    path.push(ctx_of(element, pos));
+    path.push(ctx_of(element, pos, prev));
     let style = resolve_style(element, &path, parent, cascade);
     let children = style_siblings(&element.children, &path, &style, cascade);
     StyledNode::Element(StyledElement {
@@ -494,25 +556,6 @@ fn style_element<'a>(
     })
 }
 
-fn style_one<'a>(
-    node: &'a Node,
-    pos: Option<ElemPos>,
-    ancestors: &[Ctx<'a>],
-    parent: &ComputedStyle,
-    cascade: &Cascade,
-) -> StyledNode {
-    match node {
-        Node::Text(t) => StyledNode::Text(t.clone()),
-        Node::Element(e) => style_element(
-            e,
-            pos.expect("element has a position"),
-            ancestors,
-            parent,
-            cascade,
-        ),
-    }
-}
-
 fn style_siblings<'a>(
     nodes: &'a [Node],
     ancestors: &[Ctx<'a>],
@@ -520,11 +563,28 @@ fn style_siblings<'a>(
     cascade: &Cascade,
 ) -> Vec<StyledNode> {
     let positions = element_positions(nodes);
-    nodes
-        .iter()
-        .enumerate()
-        .map(|(i, n)| style_one(n, positions[i], ancestors, parent, cascade))
-        .collect()
+    // Accumulate each preceding element sibling's (prev-less) context so a later
+    // sibling can be matched against it by the `+`/`~` combinators.
+    let mut prev: Vec<Ctx<'a>> = Vec::new();
+    let mut out = Vec::with_capacity(nodes.len());
+    for (i, node) in nodes.iter().enumerate() {
+        match node {
+            Node::Text(t) => out.push(StyledNode::Text(t.clone())),
+            Node::Element(e) => {
+                let pos = positions[i].expect("element has a position");
+                out.push(style_element(
+                    e,
+                    pos,
+                    ancestors,
+                    prev.clone(),
+                    parent,
+                    cascade,
+                ));
+                prev.push(ctx_of(e, pos, Vec::new()));
+            }
+        }
+    }
+    out
 }
 
 /// Build the styled tree for a flow of nodes under the given cascade.

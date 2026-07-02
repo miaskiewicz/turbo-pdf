@@ -45,6 +45,7 @@ tfoot { display: table-footer-group }
 tr { display: table-row }
 td, th { display: table-cell }
 li { display: list-item }
+center { display: block; text-align: center }
 ";
 
 fn add_leveled(rules: &mut Vec<LeveledRule>, order: &mut usize, level: u8, sheet: Stylesheet) {

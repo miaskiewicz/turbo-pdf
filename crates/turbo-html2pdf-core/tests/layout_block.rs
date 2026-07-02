@@ -513,3 +513,45 @@ fn visibility_hidden_and_opacity_zero_drop_the_box() {
     );
     assert_eq!(bg_boxes(&visible).len(), 1);
 }
+
+#[test]
+fn text_align_center_and_margin_auto_center_width_constrained_blocks() {
+    // A `text-align:center` container (like `<center>`) centers a narrow block
+    // child; a full-width child is untouched.
+    let centered = lay(
+        &[el(
+            "div",
+            &[("text-align", "center")],
+            vec![el(
+                "div",
+                &[("width", "100px"), ("background-color", "#ff0000")],
+                vec![],
+            )],
+        )],
+        500.0,
+    );
+    let inner = &bg_boxes(&centered)[0];
+    assert!(
+        (inner.x - 200.0).abs() < 1.0,
+        "100px block centered in 500 (got x={})",
+        inner.x
+    );
+
+    // `margin: 0 auto` centers regardless of container align.
+    let mauto = lay(
+        &[el(
+            "div",
+            &[
+                ("width", "100px"),
+                ("margin", "0 auto"),
+                ("background-color", "#00ff00"),
+            ],
+            vec![],
+        )],
+        500.0,
+    );
+    assert!(
+        (bg_boxes(&mauto)[0].x - 200.0).abs() < 1.0,
+        "margin:auto centers"
+    );
+}

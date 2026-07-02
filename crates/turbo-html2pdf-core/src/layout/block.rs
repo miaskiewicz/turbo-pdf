@@ -13,7 +13,7 @@
 use crate::error::Diagnostics;
 use crate::image::probe;
 use crate::node::TKind;
-use crate::text::FontRegistry;
+use crate::text::{Align, FontRegistry};
 
 use super::boxgen::{BoxKind, ImageSource, InlineItem, LayoutBox};
 use super::fragment::{BreakMeta, Fragment, FragmentContent, ImagePlacement, NodeId};
@@ -342,6 +342,7 @@ fn layout_block_flow(
     cy: f32,
     cw: f32,
     fs: f32,
+    align: Align,
     ctx: &mut Ctx,
 ) -> (Vec<Fragment>, f32) {
     let mut frags = Vec::new();
@@ -383,7 +384,15 @@ fn layout_block_flow(
         };
         pending = pending.max(kbs.margin.top);
         let flow_y = cursor + pending;
-        let frag = layout_box(kid, cx + kbs.margin.left + dx, flow_y + dy, cw, fs, ctx);
+        let mut frag = layout_box(kid, cx + kbs.margin.left + dx, flow_y + dy, cw, fs, ctx);
+        // Horizontally align a width-constrained block: `margin: … auto` centers it,
+        // and a `text-align:center`/`right` container centers/right-aligns block
+        // children too (legacy `<center>` / `align=center` table centering, which
+        // real sites like Hacker News rely on to center their main table).
+        let hx = block_h_offset(align, &kbs, kid, frag.width, cw);
+        if hx != 0.0 {
+            frag.translate(hx, 0.0);
+        }
         // Advance the cursor by the box's height at its *unshifted* flow position.
         if frag.height == 0.0 {
             pending = pending.max(kbs.margin.bottom);
@@ -400,6 +409,32 @@ fn layout_block_flow(
         cursor
     };
     (frags, bottom - cy)
+}
+
+/// The horizontal shift to align a width-constrained in-flow block within its
+/// container (0 for a full-width/auto block, which fills the line). `margin:auto`
+/// centers; otherwise the container's `text-align` centers/right-aligns block
+/// children — the legacy behavior `<center>` and `align="center"` rely on.
+fn block_h_offset(align: Align, kbs: &BoxStyle, kid: &LayoutBox, frag_w: f32, cw: f32) -> f32 {
+    let avail = (cw - kbs.margin.horizontal()).max(0.0);
+    if frag_w >= avail - 0.5 {
+        return 0.0;
+    }
+    if auto_x_margins(&kid.style) || align == Align::Center {
+        return (cw - frag_w) / 2.0 - kbs.margin.left;
+    }
+    if align == Align::Right {
+        return cw - frag_w - kbs.margin.right - kbs.margin.left;
+    }
+    0.0
+}
+
+/// Whether a box centers itself via `margin: … auto` (horizontal auto margins).
+fn auto_x_margins(s: &crate::style::ComputedStyle) -> bool {
+    let is_auto = |p| s.get(p).map(str::trim) == Some("auto");
+    is_auto("margin-left") && is_auto("margin-right")
+        || s.get("margin")
+            .is_some_and(|m| m.split_whitespace().any(|t| t == "auto"))
 }
 
 /// A float band: floated boxes packed from the left and right edges of a row,
@@ -470,7 +505,9 @@ fn layout_content(
     ctx: &mut Ctx,
 ) -> (Vec<Fragment>, f32) {
     match &lb.kind {
-        BoxKind::Block(kids) => layout_block_flow(kids, cx, cy, cw, bs.font_size, ctx),
+        BoxKind::Block(kids) => {
+            layout_block_flow(kids, cx, cy, cw, bs.font_size, bs.text_align, ctx)
+        }
         BoxKind::Flex(kids) => super::flex::layout_flex(lb, kids, cx, cy, cw, bs.font_size, ctx),
         BoxKind::Grid(kids) => super::flex::layout_grid(lb, kids, cx, cy, cw, bs.font_size, ctx),
         BoxKind::Table(kids) => super::table::layout_table(lb, kids, cx, cy, cw, bs.font_size, ctx),

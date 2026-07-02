@@ -262,3 +262,88 @@ fn grid_template_shorthand_sets_fixed_tracks() {
         "sidebar + main share the row"
     );
 }
+
+// --------------------------------------------------------------------------
+// harness 6: full Vector 3-column (Contents | main | Appearance) + min-content
+// --------------------------------------------------------------------------
+
+#[test]
+fn nested_vector_three_columns_place_side_by_side() {
+    // Vector nests two grids: outer `columnStart | pageContent`, and inside
+    // pageContent an `.mw-body` grid `content | columnEnd`. The three visible
+    // columns (Contents / main / Appearance) must sit left-to-right.
+    let html = r#"<body><style>
+        .inner { display: grid;
+                 grid-template: min-content 1fr / 12.25rem minmax(0,1fr);
+                 grid-template-areas: 'siteNotice siteNotice' 'columnStart pageContent' }
+        .start { grid-area: columnStart; background-color:#ff0000; height:60px }
+        .page  { grid-area: pageContent }
+        .body  { display: grid; grid-template: 1fr / minmax(0,59.25rem) min-content;
+                 grid-template-areas: 'content columnEnd' }
+        .content { grid-area: content; background-color:#00ff00; height:60px }
+        .end   { grid-area: columnEnd; background-color:#0000ff; height:60px }
+      </style>
+      <div class="inner">
+        <div class="start">Contents</div>
+        <div class="page"><div class="body">
+          <div class="content">Main</div>
+          <div class="end">Appearance settings</div>
+        </div></div>
+      </div></body>"#;
+    let f = lay(html, 1280.0);
+    let c = rect(&f, RED).expect("Contents");
+    let m = rect(&f, GREEN).expect("Main");
+    let a = rect(&f, BLUE).expect("Appearance");
+    assert!(
+        m[0] >= c[0] + c[2] - 1.0,
+        "Main right of Contents (c end {}, m start {})",
+        c[0] + c[2],
+        m[0]
+    );
+    assert!(
+        a[0] >= m[0] + m[2] - 1.0,
+        "Appearance right of Main (m end {}, a start {})",
+        m[0] + m[2],
+        a[0]
+    );
+    assert!(
+        (c[2] - 196.0).abs() < 3.0,
+        "Contents ~12.25rem, got {}",
+        c[2]
+    );
+    assert!(
+        a[2] > 20.0,
+        "Appearance (min-content) sized to its text, got {}",
+        a[2]
+    );
+}
+
+// --------------------------------------------------------------------------
+// harness 7: float text wrap (infobox/taxobox with text beside it)
+// --------------------------------------------------------------------------
+
+#[test]
+fn text_wraps_beside_a_right_float() {
+    // Wikipedia's taxobox is `float:right; width:22em`; the intro paragraphs must
+    // flow in the narrowed column to its LEFT (beside it), not stack below it.
+    let html = r#"<body>
+        <div style="float:right;width:300px;height:200px;background-color:#ff0000"></div>
+        <p style="background-color:#00ff00">The cat is a small domesticated carnivorous mammal and a member of Felidae.</p>
+      </body>"#;
+    let f = lay(html, 1000.0);
+    let float_box = rect(&f, RED).expect("float");
+    let para = rect(&f, GREEN).expect("paragraph");
+    // paragraph starts beside the float (same top region), left of it, narrowed.
+    assert!(
+        para[1] < float_box[1] + float_box[3] - 1.0,
+        "paragraph flows beside float, not below (para y {}, float bottom {})",
+        para[1],
+        float_box[1] + float_box[3]
+    );
+    assert!(
+        para[0] + para[2] <= float_box[0] + 1.0,
+        "paragraph stays left of the float (para end {}, float x {})",
+        para[0] + para[2],
+        float_box[0]
+    );
+}

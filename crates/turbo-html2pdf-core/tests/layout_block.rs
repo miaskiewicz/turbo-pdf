@@ -426,9 +426,9 @@ fn left_and_right_floats_go_to_opposite_edges() {
 }
 
 #[test]
-fn in_flow_content_clears_below_floats() {
-    // A `float:left` box, then an in-flow paragraph: the paragraph clears below
-    // the float band (pragmatic model) rather than overlapping it.
+fn in_flow_content_flows_beside_floats() {
+    // A `float:left` box, then an in-flow paragraph: the paragraph flows *beside*
+    // the float (to its right, within the float's height band), not below it.
     let root = lay(
         &[el(
             "div",
@@ -446,8 +446,14 @@ fn in_flow_content_clears_below_floats() {
         .find(|f| matches!(f.content, FragmentContent::TextLine { .. }))
         .expect("paragraph line");
     assert!(
-        line.y >= floatbox.y + floatbox.height - 1.0,
-        "in-flow text clears below the float (float bottom {}, text y {})",
+        line.x >= floatbox.x + floatbox.width - 1.0,
+        "in-flow text sits to the right of the float (float right {}, text x {})",
+        floatbox.x + floatbox.width,
+        line.x
+    );
+    assert!(
+        line.y < floatbox.y + floatbox.height - 0.5,
+        "in-flow text is beside the float, not cleared below it (float bottom {}, text y {})",
         floatbox.y + floatbox.height,
         line.y
     );

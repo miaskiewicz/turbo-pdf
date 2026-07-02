@@ -315,6 +315,9 @@ fn layout_block_flow(
     let mut cursor = cy;
     let mut pending = 0.0_f32;
     let mut band = FloatBand::default();
+    // Lowest edge of any float placed in this block — the band itself is reset once
+    // in-flow content flows past it, so the container's height is tracked separately.
+    let mut float_bottom = cy;
     for kid in kids {
         let kbs = resolve(kid, cw, fs);
         // `absolute`/`fixed`: taken out of flow — laid out at the containing
@@ -332,11 +335,11 @@ fn layout_block_flow(
                 band.bottom = band.top;
             }
             frags.push(place_float(kid, &kbs, cx, cw, fs, &mut band, ctx));
+            float_bottom = float_bottom.max(band.bottom);
             continue;
         }
-        // In-flow content after floats clears below the band (pragmatic: it stacks
-        // below rather than wrapping beside — avoids overlap without per-line wrap).
-        if band.any && band.bottom > cursor + pending {
+        // `clear`: skip past the active floats before laying this box out.
+        if band.any && clears(kid, &band) && cursor + pending < band.bottom {
             cursor = band.bottom;
             pending = 0.0;
             band = FloatBand::default();
@@ -349,13 +352,30 @@ fn layout_block_flow(
             (0.0, 0.0)
         };
         pending = pending.max(kbs.margin.top);
+        // Once content has flowed below the floats, drop the band (full width again);
+        // until then, in-flow boxes flow *beside* the float in the free inline region
+        // (so text wraps next to a `float:right` infobox rather than stacking below).
+        if band.any && cursor + pending >= band.bottom - 0.5 {
+            band = FloatBand::default();
+        }
         let flow_y = cursor + pending;
-        let mut frag = layout_box(kid, cx + kbs.margin.left + dx, flow_y + dy, cw, fs, ctx);
-        // Horizontally align a width-constrained block: `margin: … auto` centers it,
-        // and a `text-align:center`/`right` container centers/right-aligns block
-        // children too (legacy `<center>` / `align=center` table centering, which
-        // real sites like Hacker News rely on to center their main table).
-        let hx = block_h_offset(align, &kbs, kid, frag.width, cw);
+        let (region_x, region_w) = if band.any {
+            (cx + band.left, (cw - band.left - band.right).max(1.0))
+        } else {
+            (cx, cw)
+        };
+        let mut frag = layout_box(
+            kid,
+            region_x + kbs.margin.left + dx,
+            flow_y + dy,
+            region_w,
+            fs,
+            ctx,
+        );
+        // Horizontally align a width-constrained block within its inline region:
+        // `margin: … auto` centers it, and a `text-align:center`/`right` container
+        // centers/right-aligns block children (legacy `<center>` / `align=center`).
+        let hx = block_h_offset(align, &kbs, kid, frag.width, region_w);
         if hx != 0.0 {
             frag.translate(hx, 0.0);
         }
@@ -369,12 +389,7 @@ fn layout_block_flow(
         frags.push(frag);
     }
     // The block is as tall as its in-flow content or its floats, whichever is lower.
-    let bottom = if band.any {
-        cursor.max(band.bottom)
-    } else {
-        cursor
-    };
-    (frags, bottom - cy)
+    (frags, cursor.max(float_bottom) - cy)
 }
 
 /// The horizontal shift to align a width-constrained in-flow block within its
@@ -393,6 +408,17 @@ fn block_h_offset(align: Align, kbs: &BoxStyle, kid: &LayoutBox, frag_w: f32, cw
         return cw - frag_w - kbs.margin.right - kbs.margin.left;
     }
     0.0
+}
+
+/// Whether a box's `clear` requires it to drop below the currently active float
+/// band (`clear:left/right/both`, matched against which edges the band occupies).
+fn clears(kid: &LayoutBox, band: &FloatBand) -> bool {
+    match kid.style.get("clear").map(str::trim) {
+        Some("both") => true,
+        Some("left") => band.left > 0.0,
+        Some("right") => band.right > 0.0,
+        _ => false,
+    }
 }
 
 /// Whether a box centers itself via `margin: … auto` (horizontal auto margins).

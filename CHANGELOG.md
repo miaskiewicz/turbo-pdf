@@ -28,6 +28,11 @@ PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`
   - Known approximations (documented in code): `%` `top`/`bottom` insets and
     `bottom`-anchoring resolve against the containing block *width* (its height is
     unknown mid-layout); positioning is special-cased for block flow only.
+- **`layout_html_with_images`** in the Jinja-free `html_layout` drive: like
+  `layout_html` but takes an `ImageCtx`, so a caller holding final HTML *and*
+  fetched image bytes (e.g. turbo-surf screenshots) gets `<img>`/`background-image`
+  boxes sized into `Image` fragments to paint. Unresolvable images fall back to
+  the image-free box exactly as `layout_html`.
 
 ## [0.2.4]
 

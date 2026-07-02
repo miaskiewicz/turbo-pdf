@@ -13,6 +13,7 @@
 //! UA defaults), then cascades and lays out at the caller's content width.
 
 use crate::layout::fragment::Fragment;
+use crate::layout::ImageCtx;
 use crate::node::{Node, Tag};
 use crate::style::{build_cascade, style_tree, TokenSet};
 use crate::text::FontRegistry;
@@ -70,6 +71,30 @@ pub fn layout_html(
     let cascade = build_cascade(&author_css, "", TokenSet::default());
     let styled = style_tree(&nodes, &cascade);
     Ok(crate::layout(&styled, cb_width, fonts, diags))
+}
+
+/// Like [`layout_html`] but sizes `<img>`/`background-image` boxes against the
+/// caller-supplied `images` resolver (see [`crate::layout_with_images`]). For a
+/// caller (e.g. turbo-surf's screenshots) that holds final HTML *and* the fetched
+/// image bytes: an image is probed for its intrinsic size and laid out as an
+/// `Image` fragment the caller then paints. Images the resolver can't supply fall
+/// back to the image-free box, exactly as [`layout_html`].
+pub fn layout_html_with_images(
+    html: &str,
+    extra_css: &str,
+    cb_width: f32,
+    fonts: &FontRegistry,
+    images: &ImageCtx,
+    diags: &mut Diagnostics,
+) -> Result<Fragment, RenderError> {
+    let nodes = parse_html(html)?;
+    let mut author_css = collect_style_css(&nodes);
+    author_css.push_str(extra_css);
+    let cascade = build_cascade(&author_css, "", TokenSet::default());
+    let styled = style_tree(&nodes, &cascade);
+    Ok(crate::layout_with_images(
+        &styled, cb_width, fonts, images, diags,
+    ))
 }
 
 #[cfg(test)]

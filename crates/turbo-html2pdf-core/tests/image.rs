@@ -808,3 +808,44 @@ fn assert_qpdf_clean(name: &str, pdf: &[u8]) {
         String::from_utf8_lossy(&out.stdout)
     );
 }
+
+// --------------------------------------------------------------------------
+// html_layout::layout_html_with_images (Jinja-free HTML → sized image galley)
+// --------------------------------------------------------------------------
+
+/// Count the `Image` fragments in a galley subtree.
+fn count_images(f: &FragmentContent, kids: &[turbo_html2pdf_core::Fragment]) -> usize {
+    let here = usize::from(matches!(f, FragmentContent::Image(_)));
+    here + kids
+        .iter()
+        .map(|c| count_images(&c.content, &c.children))
+        .sum::<usize>()
+}
+
+#[test]
+fn layout_html_with_images_sizes_a_resolvable_img() {
+    // A raw HTML string with an `<img>` whose bytes the resolver supplies is laid
+    // out as an `Image` fragment (the caller then paints it); an unresolvable
+    // `<img>` produces none.
+    use turbo_html2pdf_core::{layout_html_with_images, FontRegistry};
+    let resolver = MapResolver::new(vec![("pic.png", png_rgb_2x2())]);
+    let images = ImageCtx {
+        resolver: &resolver,
+        body_height: Some(800.0),
+    };
+    let mut diags = Diagnostics::default();
+    let g = layout_html_with_images(
+        "<body><img src=\"pic.png\"><img src=\"missing.png\"></body>",
+        "",
+        600.0,
+        &FontRegistry::new(),
+        &images,
+        &mut diags,
+    )
+    .expect("layout");
+    assert_eq!(
+        count_images(&g.content, &g.children),
+        1,
+        "only the resolvable <img> becomes an Image fragment"
+    );
+}

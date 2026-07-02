@@ -34,6 +34,12 @@ PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`
   boxes sized into `Image` fragments to paint. Unresolvable images fall back to
   the image-free box exactly as `layout_html`.
 
+- **`inline-block` flows horizontally** (was stacked one-per-row). Atomic inlines
+  now lay left-to-right on a row and wrap when the row fills; an auto-width
+  `inline-block` shrinks to its content (via the flex `natural_width` measurement)
+  instead of filling the whole line. Replaced `<img>` and explicit-width boxes keep
+  their own sizing. Fixes nav bars / button rows / badge strips that previously
+  stacked vertically.
 - **CSS Grid layout** (`display: grid`/`inline-grid`). taffy (already the flex
   backend) owns the grid algorithm; the engine maps `grid-template-columns`/
   `-rows` (`fr`, `px`, `%`, `auto`, and integer `repeat(N, …)` tracks), `gap`/

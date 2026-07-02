@@ -219,8 +219,20 @@ fn anchor_directive_frag(
     frag
 }
 
-/// Atomic inlines are stacked below the text lines (v1 simplification); inline
-/// directives become zero-size markers at the box origin.
+/// A left-to-right row cursor for laying atomic inlines (`inline-block`, atomic
+/// `<img>`, blocks nested in inline flow) side by side, wrapping to a new row
+/// when the next box overflows the content width.
+struct InlineRow {
+    x: f32,       // used inline width of the current row (from the content edge)
+    top: f32,     // top of the current row, relative to the content box
+    height: f32,  // tallest box on the current row
+    placed: bool, // any atomic laid yet (else the row column stays at `start_h`)
+}
+
+/// Atomic inlines flow horizontally on a row and wrap when full (a pragmatic
+/// inline-block: an `inline-block` with an auto width shrinks to its content
+/// rather than filling the line). They lay out *after* any text lines of the same
+/// box, at `start_h`. Inline directives are zero-size markers at the box origin.
 fn layout_atomics(
     items: &[InlineItem],
     cx: f32,
@@ -231,14 +243,15 @@ fn layout_atomics(
     start_h: f32,
 ) -> (Vec<Fragment>, f32) {
     let mut frags = Vec::new();
-    let mut height = start_h;
+    let mut row = InlineRow {
+        x: 0.0,
+        top: start_h,
+        height: 0.0,
+        placed: false,
+    };
     for item in items {
         match item {
-            InlineItem::Atomic(b) => {
-                let f = layout_box(b, cx, cy + height, cw, fs, ctx);
-                height += f.height;
-                frags.push(f);
-            }
+            InlineItem::Atomic(b) => frags.push(layout_atomic(b, cx, cy, cw, fs, &mut row, ctx)),
             #[cfg(not(feature = "xref"))]
             InlineItem::Directive { node_id, kind } => {
                 frags.push(directive_frag(*node_id, *kind, cx, cy));
@@ -254,7 +267,50 @@ fn layout_atomics(
             InlineItem::Text { .. } => {}
         }
     }
+    let height = if row.placed {
+        row.top + row.height
+    } else {
+        start_h
+    };
     (frags, height)
+}
+
+/// Lay one atomic inline into the row: size it (shrink-to-fit for an auto-width
+/// `inline-block`; replaced/explicit boxes keep their own size), wrap onto a new
+/// row if it won't fit next to what's already there, and advance the cursor.
+fn layout_atomic(
+    b: &LayoutBox,
+    cx: f32,
+    cy: f32,
+    cw: f32,
+    fs: f32,
+    row: &mut InlineRow,
+    ctx: &mut Ctx,
+) -> Fragment {
+    let bs = resolve(b, cw, fs);
+    let bx = cx + row.x;
+    let by = cy + row.top;
+    // Auto-width, non-replaced inline-blocks shrink to their content (else block
+    // width would fill the whole line and force one-per-row); replaced `<img>` and
+    // explicit-width boxes size themselves via the normal box path.
+    let replaced = b.image.as_ref().is_some_and(|s| s.replaced);
+    let mut f = if !replaced && bs.width.resolve(cw).is_none() {
+        let w = super::flex::natural_width(b, ctx.fonts).min(cw);
+        layout_box_sized(b, &bs, bx, by, w, ctx)
+    } else {
+        layout_box(b, bx, by, cw, fs, ctx)
+    };
+    // Wrap to a new row when the box overflows and the row already has content.
+    if row.x > 0.0 && row.x + f.width > cw {
+        row.top += row.height;
+        row.x = 0.0;
+        row.height = 0.0;
+        f.translate(cx - f.x, cy + row.top - f.y);
+    }
+    row.x += f.width;
+    row.height = row.height.max(f.height);
+    row.placed = true;
+    f
 }
 
 fn layout_lines(

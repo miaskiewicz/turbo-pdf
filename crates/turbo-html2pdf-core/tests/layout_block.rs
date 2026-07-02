@@ -244,6 +244,132 @@ fn lines_handle_text_directive_and_atomic() {
         .any(|f| matches!(f.content, FragmentContent::Directive(TKind::Footnote))));
 }
 
+/// The `Box` fragments carrying a background (the coloured probe boxes), in
+/// document order.
+fn bg_boxes(root: &Fragment) -> Vec<&Fragment> {
+    all(root)
+        .into_iter()
+        .filter(|f| {
+            matches!(
+                &f.content,
+                FragmentContent::Box {
+                    background: Some(_),
+                    ..
+                }
+            )
+        })
+        .collect()
+}
+
+/// An `inline-block` probe: distinct background, optional explicit size + text.
+fn ib(pairs: &[(&str, &str)], text: &str) -> StyledNode {
+    let mut p = vec![("display", "inline-block")];
+    p.extend_from_slice(pairs);
+    let kids = if text.is_empty() {
+        vec![]
+    } else {
+        vec![txt(text)]
+    };
+    el("span", &p, kids)
+}
+
+#[test]
+fn inline_blocks_flow_horizontally() {
+    // Two inline-blocks sit side by side on one row (not stacked vertically).
+    let root = lay(
+        &[el(
+            "div",
+            &[],
+            vec![
+                ib(
+                    &[
+                        ("width", "60px"),
+                        ("height", "20px"),
+                        ("background-color", "#ff0000"),
+                    ],
+                    "",
+                ),
+                ib(
+                    &[
+                        ("width", "60px"),
+                        ("height", "20px"),
+                        ("background-color", "#00ff00"),
+                    ],
+                    "",
+                ),
+            ],
+        )],
+        500.0,
+    );
+    let bx = bg_boxes(&root);
+    assert_eq!(bx.len(), 2);
+    assert_eq!(bx[0].y, bx[1].y, "same row");
+    assert!(
+        (bx[1].x - bx[0].x - 60.0).abs() < 1.0,
+        "packed side by side"
+    );
+}
+
+#[test]
+fn inline_blocks_wrap_when_row_full() {
+    // Three 80px inline-blocks in a 200px box: two fit on row 1, the third wraps.
+    let mk = |c: &str| {
+        ib(
+            &[
+                ("width", "80px"),
+                ("height", "20px"),
+                ("background-color", c),
+            ],
+            "",
+        )
+    };
+    let root = lay(
+        &[el(
+            "div",
+            &[],
+            vec![mk("#ff0000"), mk("#00ff00"), mk("#0000ff")],
+        )],
+        200.0,
+    );
+    let bx = bg_boxes(&root);
+    assert_eq!(bx.len(), 3);
+    assert_eq!(bx[0].y, bx[1].y, "first two on row 1");
+    assert!(bx[2].y > bx[0].y, "third wraps to row 2");
+    assert!(
+        (bx[2].x - bx[0].x).abs() < 1.0,
+        "third back at the row start"
+    );
+}
+
+#[test]
+fn auto_width_inline_block_shrinks_to_content() {
+    // An auto-width inline-block shrinks to its content instead of filling the
+    // 500px line, so two of them share a row.
+    let root = lay(
+        &[el(
+            "div",
+            &[],
+            vec![
+                ib(&[("background-color", "#ff0000")], "hi"),
+                ib(&[("background-color", "#00ff00")], "yo"),
+            ],
+        )],
+        500.0,
+    );
+    let bx = bg_boxes(&root);
+    assert_eq!(bx.len(), 2);
+    assert!(
+        bx[0].width < 200.0,
+        "shrinks to content, not the full 500px line (got {})",
+        bx[0].width
+    );
+    assert_eq!(bx[0].y, bx[1].y, "same row");
+    assert!(
+        bx[1].x > bx[0].x + 1.0,
+        "second sits to the right of the first"
+    );
+}
+
 #[test]
 fn empty_registry_renders_no_text_lines() {
     let root = build_box_tree(&[el("p", &[], vec![txt("hi")])]);

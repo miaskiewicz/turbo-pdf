@@ -29,7 +29,7 @@ fn run(text: &str, face: &FontFace) -> InlineRun {
 fn lay(runs: &[InlineRun], max_width: f32, align: Align) -> (ParagraphLayout, Diagnostics) {
     let reg = common::registry();
     let mut diags = Diagnostics::default();
-    let p = layout_paragraph(runs, &reg, max_width, align, &mut diags);
+    let p = layout_runs(runs, &reg, max_width, align, &mut diags);
     (p, diags)
 }
 
@@ -197,7 +197,7 @@ fn per_glyph_fallback_finds_another_face() {
         reg
     };
     let mut diags = Diagnostics::default();
-    let p = layout_paragraph(&[r], &reg, 1000.0, Align::Left, &mut diags);
+    let p = layout_runs(&[r], &reg, 1000.0, Align::Left, &mut diags);
     assert!(diags.is_empty()); // fallback found, no notdef
     assert_eq!(p.lines[0].runs[0].face.family(), "Evolventa");
 }

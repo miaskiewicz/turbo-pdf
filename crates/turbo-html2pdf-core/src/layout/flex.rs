@@ -147,7 +147,7 @@ fn item_style(item: &LayoutBox, fs: f32) -> Style {
 fn lines_natural(items: &[InlineItem], fs: f32, fonts: &FontRegistry) -> f32 {
     let runs = block::build_runs(items, fs, 0.0, fonts);
     let mut scratch = Diagnostics::default();
-    inline::layout_paragraph(&runs, fonts, f32::MAX, Align::Left, &mut scratch).width
+    inline::layout_runs(&runs, fonts, f32::MAX, Align::Left, &mut scratch).width
 }
 
 fn kids_natural(kids: &[LayoutBox], fonts: &FontRegistry) -> f32 {

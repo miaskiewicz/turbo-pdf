@@ -220,100 +220,25 @@ fn anchor_directive_frag(
     frag
 }
 
-/// A left-to-right row cursor for laying atomic inlines (`inline-block`, atomic
-/// `<img>`, blocks nested in inline flow) side by side, wrapping to a new row
-/// when the next box overflows the content width.
-struct InlineRow {
-    x: f32,       // used inline width of the current row (from the content edge)
-    top: f32,     // top of the current row, relative to the content box
-    height: f32,  // tallest box on the current row
-    placed: bool, // any atomic laid yet (else the row column stays at `start_h`)
-}
-
-/// Atomic inlines flow horizontally on a row and wrap when full (a pragmatic
-/// inline-block: an `inline-block` with an auto width shrinks to its content
-/// rather than filling the line). They lay out *after* any text lines of the same
-/// box, at `start_h`. Inline directives are zero-size markers at the box origin.
-fn layout_atomics(
-    items: &[InlineItem],
-    cx: f32,
-    cy: f32,
-    cw: f32,
-    fs: f32,
-    ctx: &mut Ctx,
-    start_h: f32,
-) -> (Vec<Fragment>, f32) {
-    let mut frags = Vec::new();
-    let mut row = InlineRow {
-        x: 0.0,
-        top: start_h,
-        height: 0.0,
-        placed: false,
-    };
-    for item in items {
-        match item {
-            InlineItem::Atomic(b) => frags.push(layout_atomic(b, cx, cy, cw, fs, &mut row, ctx)),
-            #[cfg(not(feature = "xref"))]
-            InlineItem::Directive { node_id, kind } => {
-                frags.push(directive_frag(*node_id, *kind, cx, cy));
-            }
-            #[cfg(feature = "xref")]
-            InlineItem::Directive {
-                node_id,
-                kind,
-                anchor,
-            } => {
-                frags.push(anchor_directive_frag(*node_id, *kind, cx, cy, anchor));
-            }
-            InlineItem::Text { .. } => {}
-        }
-    }
-    let height = if row.placed {
-        row.top + row.height
-    } else {
-        start_h
-    };
-    (frags, height)
-}
-
-/// Lay one atomic inline into the row: size it (shrink-to-fit for an auto-width
-/// `inline-block`; replaced/explicit boxes keep their own size), wrap onto a new
-/// row if it won't fit next to what's already there, and advance the cursor.
-fn layout_atomic(
-    b: &LayoutBox,
-    cx: f32,
-    cy: f32,
-    cw: f32,
-    fs: f32,
-    row: &mut InlineRow,
-    ctx: &mut Ctx,
-) -> Fragment {
+/// Lay out an atomic inline (`inline-block` / replaced `<img>`) at the origin so
+/// its size is known; the caller translates it to its placed line position. An
+/// auto-width, non-replaced `inline-block` shrinks to its content (else it would
+/// fill the line); replaced/explicit-width boxes size themselves normally.
+fn lay_atomic(b: &LayoutBox, cw: f32, fs: f32, ctx: &mut Ctx) -> Fragment {
     let bs = resolve(b, cw, fs);
-    let bx = cx + row.x;
-    let by = cy + row.top;
-    // Auto-width, non-replaced inline-blocks shrink to their content (else block
-    // width would fill the whole line and force one-per-row); replaced `<img>` and
-    // explicit-width boxes size themselves via the normal box path.
     let replaced = b.image.as_ref().is_some_and(|s| s.replaced);
-    let mut f = if !replaced && bs.width.resolve(cw).is_none() {
+    if !replaced && bs.width.resolve(cw).is_none() {
         let w = super::flex::natural_width(b, ctx.fonts).min(cw);
-        layout_box_sized(b, &bs, bx, by, w, ctx)
+        layout_box_sized(b, &bs, 0.0, 0.0, w, ctx)
     } else {
-        layout_box(b, bx, by, cw, fs, ctx)
-    };
-    // Wrap to a new row when the box overflows and the row already has content.
-    if row.x > 0.0 && row.x + f.width > cw {
-        row.top += row.height;
-        row.x = 0.0;
-        row.height = 0.0;
-        f.translate(cx - f.x, cy + row.top - f.y);
+        layout_box(b, 0.0, 0.0, cw, fs, ctx)
     }
-    row.x += f.width;
-    row.height = row.height.max(f.height);
-    row.placed = true;
-    f
 }
 
+/// Lay out an inline formatting context: text runs and atomic inline boxes flow
+/// together into line boxes (atoms are unbreakable units placed on the baseline),
+/// so an `inline-block`/`<img>` sits *within* the line next to text rather than
+/// stacking below it. Inline directives become zero-size markers at the origin.
 fn layout_lines(
     items: &[InlineItem],
     bs: &BoxStyle,
@@ -322,14 +247,55 @@ fn layout_lines(
     cw: f32,
     ctx: &mut Ctx,
 ) -> (Vec<Fragment>, f32) {
+    // Pre-lay each atomic (recursively) to learn its size, and build the inline
+    // piece sequence in document order; directives are collected as markers.
+    let mut atom_frags: Vec<Fragment> = Vec::new();
+    let mut directives: Vec<Fragment> = Vec::new();
+    let mut pieces: Vec<inline::Piece> = Vec::new();
+    for item in items {
+        match item {
+            InlineItem::Text { .. } => {
+                if let Some(run) = text_run(item, bs.font_size, cw, ctx.fonts) {
+                    pieces.push(inline::Piece::Run(run));
+                }
+            }
+            InlineItem::Atomic(b) => {
+                let f = lay_atomic(b, cw, bs.font_size, ctx);
+                pieces.push(inline::Piece::Atom(inline::InlineAtom {
+                    id: atom_frags.len(),
+                    width: f.width,
+                    height: f.height,
+                }));
+                atom_frags.push(f);
+            }
+            #[cfg(not(feature = "xref"))]
+            InlineItem::Directive { node_id, kind } => {
+                directives.push(directive_frag(*node_id, *kind, cx, cy));
+            }
+            #[cfg(feature = "xref")]
+            InlineItem::Directive {
+                node_id,
+                kind,
+                anchor,
+            } => {
+                directives.push(anchor_directive_frag(*node_id, *kind, cx, cy, anchor));
+            }
+        }
+    }
     let fonts = ctx.fonts;
-    let runs = build_runs(items, bs.font_size, cw, fonts);
-    let para = inline::layout_paragraph(&runs, fonts, cw, bs.text_align, ctx.diags);
+    let para = inline::layout_paragraph(&pieces, fonts, cw, bs.text_align, ctx.diags);
     let mut frags = Vec::new();
     lines_to_fragments(&para, cx, cy, &mut frags);
-    let (extra, height) = layout_atomics(items, cx, cy, cw, bs.font_size, ctx, para.height);
-    frags.extend(extra);
-    (frags, height)
+    // Translate each pre-laid atom to where it landed within its line.
+    for line in &para.lines {
+        for placed in &line.atoms {
+            let mut f = atom_frags[placed.id].clone();
+            f.translate(cx + placed.x, cy + line.top + placed.y);
+            frags.push(f);
+        }
+    }
+    frags.extend(directives);
+    (frags, para.height)
 }
 
 // --------------------------------------------------------------------------

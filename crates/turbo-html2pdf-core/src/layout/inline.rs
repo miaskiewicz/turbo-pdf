@@ -31,6 +31,31 @@ pub struct InlineRun {
     pub valign: VAlign,
 }
 
+/// An atomic inline box (an `inline-block` or replaced `<img>`) that flows within
+/// the line as one unbreakable unit of the given border-box size. The caller lays
+/// the box out itself; `id` maps a placement back to that laid fragment.
+#[derive(Debug, Clone, Copy)]
+pub struct InlineAtom {
+    pub id: usize,
+    pub width: f32,
+    pub height: f32,
+}
+
+/// One inline-level piece in document order: a styled text run or an atomic box.
+#[derive(Debug, Clone)]
+pub enum Piece {
+    Run(InlineRun),
+    Atom(InlineAtom),
+}
+
+/// Where an atom landed: its `id` and top-left relative to the line's top-left.
+#[derive(Debug, Clone, Copy)]
+pub struct PlacedAtom {
+    pub id: usize,
+    pub x: f32,
+    pub y: f32,
+}
+
 /// A contiguous run of glyphs sharing a face/size/color, positioned relative to
 /// the line's top-left.
 #[derive(Debug, Clone)]
@@ -42,10 +67,12 @@ pub struct GlyphRun {
     pub color: Rgba,
 }
 
-/// One laid-out line: its glyph runs, used width, top offset, and box height.
+/// One laid-out line: its glyph runs, atom placements, used width, top offset,
+/// and box height.
 #[derive(Debug, Clone)]
 pub struct InlineLine {
     pub runs: Vec<GlyphRun>,
+    pub atoms: Vec<PlacedAtom>,
     pub width: f32,
     pub top: f32,
     pub height: f32,
@@ -120,6 +147,8 @@ struct Word {
     segs: Vec<Seg>,
     width: f32,
     space_after: f32,
+    /// An atomic inline box occupying this word's slot (its `segs` are empty).
+    atom: Option<InlineAtom>,
 }
 
 fn seg_key(c: &CharInfo) -> (usize, String, u16, bool) {
@@ -165,6 +194,7 @@ fn make_word(chars: &[CharInfo], runs: &[InlineRun], space_after: f32) -> Word {
         segs,
         width,
         space_after,
+        atom: None,
     }
 }
 
@@ -189,6 +219,45 @@ fn build_words(chars: &[CharInfo], runs: &[InlineRun]) -> Vec<Word> {
         words.push(make_word(&chars[start..i], runs, space_after));
     }
     words
+}
+
+/// Build the word list from inline pieces in document order: consecutive text
+/// runs are grouped (so a word may still span adjacent runs, e.g. `<b>x</b>y`),
+/// and each atom becomes an unbreakable atom-word at its position.
+fn build_pieces(pieces: &[Piece], reg: &FontRegistry, diags: &mut Diagnostics) -> Vec<Word> {
+    let mut words = Vec::new();
+    let mut group: Vec<InlineRun> = Vec::new();
+    for piece in pieces {
+        match piece {
+            Piece::Run(run) => group.push(run.clone()),
+            Piece::Atom(atom) => {
+                flush_run_group(&mut group, reg, diags, &mut words);
+                words.push(Word {
+                    segs: Vec::new(),
+                    width: atom.width,
+                    space_after: 0.0,
+                    atom: Some(*atom),
+                });
+            }
+        }
+    }
+    flush_run_group(&mut group, reg, diags, &mut words);
+    words
+}
+
+/// Flush a run of consecutive text pieces into words (itemize + word-break),
+/// clearing the group.
+fn flush_run_group(
+    group: &mut Vec<InlineRun>,
+    reg: &FontRegistry,
+    diags: &mut Diagnostics,
+    out: &mut Vec<Word>,
+) {
+    if !group.is_empty() {
+        let chars = flatten_chars(group, reg, diags);
+        out.extend(build_words(&chars, group));
+        group.clear();
+    }
 }
 
 // --------------------------------------------------------------------------
@@ -259,6 +328,12 @@ fn line_metrics(words: &[Word]) -> Metrics {
         for seg in &word.segs {
             fold_seg_metrics(seg, &mut m);
         }
+        // An atom sits with its bottom on the baseline (the CSS default for a
+        // replaced/empty inline-block), so it contributes its full height as ascent.
+        if let Some(atom) = word.atom {
+            m.ascent = m.ascent.max(atom.height);
+            m.height = m.height.max(atom.height);
+        }
     }
     m.height = m.height.max(m.ascent + m.descent);
     m
@@ -325,15 +400,27 @@ fn place_line(words: Vec<Word>, max_width: f32, align: Align) -> InlineLine {
     let width = line_used_width(&words);
     let mut pen = align_offset(align, width, max_width);
     let mut runs = Vec::new();
+    let mut atoms = Vec::new();
     for word in &words {
-        for seg in &word.segs {
-            runs.push(shape_seg(seg, pen, baseline));
-            pen += seg.width;
+        if let Some(atom) = word.atom {
+            // Bottom-align the atom to the baseline.
+            atoms.push(PlacedAtom {
+                id: atom.id,
+                x: pen,
+                y: baseline - atom.height,
+            });
+            pen += atom.width;
+        } else {
+            for seg in &word.segs {
+                runs.push(shape_seg(seg, pen, baseline));
+                pen += seg.width;
+            }
         }
         pen += word.space_after;
     }
     InlineLine {
         runs: merge_runs(runs),
+        atoms,
         width,
         top: 0.0,
         height: m.height,
@@ -355,20 +442,34 @@ fn finalize(mut lines: Vec<InlineLine>) -> ParagraphLayout {
     }
 }
 
-/// Lay out a paragraph of styled runs into lines fitting `max_width` px.
+/// Lay out a paragraph of inline pieces (text runs + atomic boxes, in document
+/// order) into lines fitting `max_width` px. Atoms flow within the line and their
+/// placements come back on each [`InlineLine::atoms`].
 pub fn layout_paragraph(
-    runs: &[InlineRun],
+    pieces: &[Piece],
     reg: &FontRegistry,
     max_width: f32,
     align: Align,
     diags: &mut Diagnostics,
 ) -> ParagraphLayout {
-    let chars = flatten_chars(runs, reg, diags);
-    let words = build_words(&chars, runs);
+    let words = build_pieces(pieces, reg, diags);
     let lines = wrap_words(words, max_width);
     let placed = lines
         .into_iter()
         .map(|w| place_line(w, max_width, align))
         .collect();
     finalize(placed)
+}
+
+/// Lay out a paragraph of text runs only (no atoms) — a convenience for callers
+/// that measure text width (e.g. flex/grid content sizing).
+pub fn layout_runs(
+    runs: &[InlineRun],
+    reg: &FontRegistry,
+    max_width: f32,
+    align: Align,
+    diags: &mut Diagnostics,
+) -> ParagraphLayout {
+    let pieces: Vec<Piece> = runs.iter().cloned().map(Piece::Run).collect();
+    layout_paragraph(&pieces, reg, max_width, align, diags)
 }

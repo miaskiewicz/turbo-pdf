@@ -555,3 +555,40 @@ fn text_align_center_and_margin_auto_center_width_constrained_blocks() {
         "margin:auto centers"
     );
 }
+
+#[test]
+fn inline_block_flows_within_the_line_next_to_text() {
+    // An inline-block after text sits on the SAME line, to the right of the text
+    // (not stacked below) — this is what puts HN's footer search box next to
+    // "Search:" and its nav logo inline with the title.
+    let root = lay(
+        &[el(
+            "div",
+            &[],
+            vec![
+                txt("Search: "),
+                ib(
+                    &[
+                        ("width", "40px"),
+                        ("height", "16px"),
+                        ("background-color", "#ff0000"),
+                    ],
+                    "",
+                ),
+            ],
+        )],
+        500.0,
+    );
+    let atom = &bg_boxes(&root)[0];
+    let line = all(&root)
+        .into_iter()
+        .find(|f| matches!(f.content, FragmentContent::TextLine { .. }))
+        .expect("text line");
+    assert!(atom.x > 20.0, "atom sits after the text (got x={})", atom.x);
+    assert!(
+        (atom.y - line.y).abs() < 20.0,
+        "atom on the same line as the text (atom y={}, line y={})",
+        atom.y,
+        line.y
+    );
+}

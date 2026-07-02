@@ -105,6 +105,9 @@ pub enum BoxKind {
     Lines(Vec<InlineItem>),
     /// A flex container; children are flex items.
     Flex(Vec<LayoutBox>),
+    /// A grid container; children are grid items (auto-placed unless they carry
+    /// explicit `grid-row`/`grid-column` lines).
+    Grid(Vec<LayoutBox>),
     /// A table; children are rows/row-groups (interpreted by `table.rs` via
     /// each child's `display`).
     Table(Vec<LayoutBox>),
@@ -246,6 +249,7 @@ fn flatten_inline(el: &StyledElement, ids: &mut Ids) -> Vec<InlineItem> {
 fn box_kind_for(display: Display, el: &StyledElement, ids: &mut Ids) -> BoxKind {
     match display {
         Display::Flex => BoxKind::Flex(child_block_boxes(el, ids)),
+        Display::Grid => BoxKind::Grid(child_block_boxes(el, ids)),
         Display::Table => BoxKind::Table(child_block_boxes(el, ids)),
         _ => build_flow(&el.children, &el.style, ids),
     }

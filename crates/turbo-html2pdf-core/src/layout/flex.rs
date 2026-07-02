@@ -9,10 +9,12 @@
 //! item's padding/border are folded into the measured border-box, and its margins
 //! are handed to taffy. Per-item `align-self`/`order` are deferred (documented).
 
+use taffy::prelude::{FromLength, TaffyAuto};
+use taffy::style_helpers::{fr, percent};
 use taffy::{
     AlignItems, AvailableSpace, Dimension, Display, FlexDirection, FlexWrap, JustifyContent,
     Layout, LengthPercentage, LengthPercentageAuto, NodeId as TaffyId, Rect, Size, Style,
-    TaffyTree,
+    TaffyTree, TrackSizingFunction,
 };
 
 use crate::error::Diagnostics;
@@ -164,7 +166,9 @@ pub(crate) fn natural_width(lb: &LayoutBox, fonts: &FontRegistry) -> f32 {
     }
     let inner = match &lb.kind {
         BoxKind::Lines(items) => lines_natural(items, bs.font_size, fonts),
-        BoxKind::Block(k) | BoxKind::Flex(k) | BoxKind::Table(k) => kids_natural(k, fonts),
+        BoxKind::Block(k) | BoxKind::Flex(k) | BoxKind::Grid(k) | BoxKind::Table(k) => {
+            kids_natural(k, fonts)
+        }
         BoxKind::Directive(_) => 0.0,
     };
     inner + frame
@@ -281,6 +285,131 @@ fn place_items(
         frags.push(place_one(&items[i], layout, cx, cy, fs, ctx));
     }
     frags
+}
+
+// --------------------------------------------------------------------------
+// grid (taffy owns the grid algorithm; we map CSS templates + gaps)
+// --------------------------------------------------------------------------
+
+/// One explicit-gap axis: `column-gap`/`row-gap`, falling back to `gap`.
+fn gap_axis(s: &ComputedStyle, axis: &str) -> LengthPercentage {
+    let px = s
+        .get(axis)
+        .or_else(|| s.get("gap"))
+        .and_then(|v| parse_px(v, DEFAULT_FONT_SIZE))
+        .unwrap_or(0.0);
+    LengthPercentage::length(px)
+}
+
+/// One grid track: `1fr`, `50%`, `200px`, or `auto`/`min-content`/`max-content`
+/// (all mapped to taffy's `AUTO`, a content-sized track). Unparsable → `AUTO`.
+fn track_of(tok: &str) -> TrackSizingFunction {
+    let t = tok.trim();
+    if let Some(f) = t
+        .strip_suffix("fr")
+        .and_then(|x| x.trim().parse::<f32>().ok())
+    {
+        return fr(f);
+    }
+    if let Some(p) = t
+        .strip_suffix('%')
+        .and_then(|x| x.trim().parse::<f32>().ok())
+    {
+        return percent(p / 100.0);
+    }
+    if let Some(px) = parse_px(t, DEFAULT_FONT_SIZE) {
+        return TrackSizingFunction::from_length(px);
+    }
+    TrackSizingFunction::AUTO
+}
+
+/// `repeat(N, <tracks>)` expanded into N copies of its track list (integer count
+/// only; `auto-fill`/`auto-fit` fall through to a single `AUTO` track).
+fn parse_repeat(tok: &str) -> Option<Vec<TrackSizingFunction>> {
+    let inner = tok.trim().strip_prefix("repeat(")?.strip_suffix(')')?;
+    let (count, tracks) = inner.split_once(',')?;
+    let count: usize = count.trim().parse().ok()?;
+    let one: Vec<TrackSizingFunction> = super::value::css_value_tokens(tracks)
+        .into_iter()
+        .map(track_of)
+        .collect();
+    Some(
+        one.iter()
+            .cloned()
+            .cycle()
+            .take(count * one.len())
+            .collect(),
+    )
+}
+
+/// Parse a `grid-template-columns`/`-rows` value into taffy tracks. Empty /
+/// `none` → no explicit tracks (taffy's implicit-grid auto-placement applies).
+fn grid_tracks(spec: Option<&str>) -> Vec<TrackSizingFunction> {
+    let Some(spec) = spec
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && *s != "none")
+    else {
+        return Vec::new();
+    };
+    let mut out = Vec::new();
+    for tok in super::value::css_value_tokens(spec) {
+        match parse_repeat(tok) {
+            Some(rep) => out.extend(rep),
+            None => out.push(track_of(tok)),
+        }
+    }
+    out
+}
+
+fn grid_container_style(container: &LayoutBox, cw: f32) -> Style {
+    let s = &container.style;
+    Style {
+        display: Display::Grid,
+        grid_template_columns: grid_tracks(s.get("grid-template-columns"))
+            .into_iter()
+            .collect(),
+        grid_template_rows: grid_tracks(s.get("grid-template-rows"))
+            .into_iter()
+            .collect(),
+        gap: Size {
+            width: gap_axis(s, "column-gap"),
+            height: gap_axis(s, "row-gap"),
+        },
+        justify_content: justify_content(s),
+        align_items: align_items(s),
+        size: Size {
+            width: Dimension::length(cw),
+            height: Dimension::auto(),
+        },
+        ..Default::default()
+    }
+}
+
+/// Lay out a grid container's items into the content box at `(cx, cy)` of width
+/// `cw`. Items are auto-placed into the declared column/row tracks (explicit
+/// `grid-row`/`grid-column` line placement is deferred). Returns galley-absolute
+/// fragments and the content height.
+pub(crate) fn layout_grid(
+    container: &LayoutBox,
+    items: &[LayoutBox],
+    cx: f32,
+    cy: f32,
+    cw: f32,
+    fs: f32,
+    ctx: &mut Ctx,
+) -> (Vec<Fragment>, f32) {
+    if items.is_empty() {
+        return (Vec::new(), 0.0);
+    }
+    let mut tree: TaffyTree<usize> = TaffyTree::new();
+    let leaves = build_leaves(&mut tree, items, fs);
+    let root = tree
+        .new_with_children(grid_container_style(container, cw), &leaves)
+        .expect("grid root");
+    solve(&mut tree, root, items, fs, cw, ctx.fonts);
+    let frags = place_items(&tree, &leaves, items, cx, cy, fs, ctx);
+    let height = tree.layout(root).expect("root layout").size.height;
+    (frags, height)
 }
 
 /// Lay out a flex container's items into the content box at `(cx, cy)` of width

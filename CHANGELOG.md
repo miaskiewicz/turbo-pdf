@@ -34,6 +34,14 @@ PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`
   boxes sized into `Image` fragments to paint. Unresolvable images fall back to
   the image-free box exactly as `layout_html`.
 
+- **CSS Grid layout** (`display: grid`/`inline-grid`). taffy (already the flex
+  backend) owns the grid algorithm; the engine maps `grid-template-columns`/
+  `-rows` (`fr`, `px`, `%`, `auto`, and integer `repeat(N, …)` tracks), `gap`/
+  `row-gap`/`column-gap`, and `justify-content`/`align-items`, then places items by
+  auto-placement into the tracks. Explicit `grid-row`/`grid-column` line placement
+  is deferred (items auto-flow). `inline-flex` now also maps to flex. Modern pages
+  are grid/flex-heavy, so this is a large real-page fidelity win.
+
 ### Fixed
 - **`background` shorthand is now honored.** The cascade only read the
   `background-color`/`background-image` longhands, so `background: #fff url(...)

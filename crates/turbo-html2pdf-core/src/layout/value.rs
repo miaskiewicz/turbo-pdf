@@ -70,6 +70,7 @@ pub enum Display {
     Inline,
     InlineBlock,
     Flex,
+    Grid,
     None,
     Table,
     TableRow,
@@ -482,7 +483,8 @@ pub fn display_of(s: &ComputedStyle) -> Display {
     match s.get("display").unwrap_or("block").trim() {
         "inline" => Display::Inline,
         "inline-block" => Display::InlineBlock,
-        "flex" => Display::Flex,
+        "flex" | "inline-flex" => Display::Flex,
+        "grid" | "inline-grid" => Display::Grid,
         "none" => Display::None,
         "table" => Display::Table,
         "table-row" => Display::TableRow,

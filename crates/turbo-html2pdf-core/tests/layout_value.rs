@@ -400,3 +400,45 @@ fn from_pairs_get_roundtrip() {
     assert_eq!(s.get("color"), Some("red"));
     assert_eq!(s.get("missing"), None);
 }
+
+// ---------------------------------------------------------------- background shorthand
+
+#[test]
+fn background_shorthand_resolves_color() {
+    // The `background` shorthand (not just the `background-color` longhand) must
+    // set the box's background — real stylesheets use the shorthand pervasively.
+    let green = Rgba {
+        r: 0,
+        g: 255,
+        b: 0,
+        a: 255,
+    };
+    assert_eq!(
+        resolve(&[("background-color", "#00ff00")]).background,
+        Some(green)
+    );
+    assert_eq!(
+        resolve(&[("background", "#00ff00")]).background,
+        Some(green)
+    );
+    // A full shorthand with an image + keywords still yields the colour token.
+    assert_eq!(
+        resolve(&[("background", "#00ff00 url(x.png) no-repeat center")]).background,
+        Some(green)
+    );
+    // rgb() functional colour inside the shorthand (kept whole despite spaces).
+    assert_eq!(
+        resolve(&[("background", "rgb(0, 255, 0) url(x.png)")]).background,
+        Some(green)
+    );
+    // The longhand still wins when both are present.
+    assert_eq!(
+        resolve(&[("background", "#ff0000"), ("background-color", "#00ff00")]).background,
+        Some(green)
+    );
+    // No colour token → no background (an image-only shorthand).
+    assert_eq!(
+        resolve(&[("background", "url(x.png) no-repeat")]).background,
+        None
+    );
+}

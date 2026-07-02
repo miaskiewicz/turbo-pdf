@@ -317,11 +317,23 @@ fn attr_value<'a>(attrs: &'a [Attr], name: &str) -> Option<&'a str> {
         .map(|a| a.value.as_str())
 }
 
-/// The url of a `background-image: url(...)` declaration, or `None`. A
-/// `background-image: none` (or unparsable value) yields `None`.
+/// The url of a `background-image: url(...)` longhand, or of a `url(...)` in the
+/// `background` shorthand (real stylesheets set images via the shorthand). A
+/// `none`/gradient/unparsable value yields `None`.
 fn background_image(style: &ComputedStyle) -> Option<String> {
-    let value = style.get("background-image")?.trim();
-    let inner = value.strip_prefix("url(")?.strip_suffix(')')?;
+    if let Some(url) = style.get("background-image").and_then(url_token) {
+        return Some(url);
+    }
+    let bg = style.get("background")?;
+    super::value::css_value_tokens(bg)
+        .into_iter()
+        .find_map(url_token)
+}
+
+/// The bare url inside a `url(...)` token (quotes stripped), or `None` for any
+/// other token.
+fn url_token(token: &str) -> Option<String> {
+    let inner = token.trim().strip_prefix("url(")?.strip_suffix(')')?;
     let name = inner.trim().trim_matches(['"', '\'']).trim();
     (!name.is_empty()).then(|| name.to_string())
 }

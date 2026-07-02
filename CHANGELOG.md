@@ -34,6 +34,14 @@ PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`
   boxes sized into `Image` fragments to paint. Unresolvable images fall back to
   the image-free box exactly as `layout_html`.
 
+### Fixed
+- **`background` shorthand is now honored.** The cascade only read the
+  `background-color`/`background-image` longhands, so `background: #fff url(...)
+  no-repeat` (which real stylesheets use pervasively) set neither the box's
+  background colour nor its background-image — a page laid out with no backgrounds
+  at all. Both are now recovered from the shorthand (a colour token, and/or a
+  `url(...)`), with the longhand still winning when both are set.
+
 ## [0.2.4]
 
 ### Added

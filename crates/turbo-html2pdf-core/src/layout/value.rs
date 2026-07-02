@@ -737,8 +737,57 @@ fn resolve_box_metrics(s: &ComputedStyle, fs: f32, ctx: ResolveCtx) -> BoxStyle 
         break_inside_avoid: s.get("break-inside").map(str::trim) == Some("avoid"),
         orphans: int_prop(s, "orphans", 2),
         widows: int_prop(s, "widows", 2),
-        background: s.get("background-color").and_then(parse_color),
+        background: background_of(s),
     }
+}
+
+/// The used background colour: the `background-color` longhand, else a colour
+/// found in the `background` shorthand. Real stylesheets set backgrounds via the
+/// shorthand (`background: #fff url(...) no-repeat`) far more than the longhand,
+/// so ignoring it leaves most real pages painting no backgrounds at all.
+fn background_of(s: &ComputedStyle) -> Option<Rgba> {
+    if let Some(c) = s.get("background-color").and_then(parse_color) {
+        return Some(c);
+    }
+    s.get("background").and_then(background_shorthand_color)
+}
+
+/// The colour token of a `background` shorthand (`url(...)` / gradients skipped),
+/// or `None` if it names no colour.
+fn background_shorthand_color(value: &str) -> Option<Rgba> {
+    css_value_tokens(value)
+        .into_iter()
+        .filter(|t| !t.starts_with("url(") && !t.contains("gradient("))
+        .find_map(parse_color)
+}
+
+/// Split a CSS value into top-level tokens, keeping parenthesized groups
+/// (`rgb(1, 2, 3)`, `url(a b)`) whole so a functional value isn't torn apart at
+/// its inner spaces/commas. Shared by the `background`/`background-image`
+/// shorthand readers.
+pub(crate) fn css_value_tokens(value: &str) -> Vec<&str> {
+    let bytes = value.as_bytes();
+    let mut tokens = Vec::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        let mut depth = 0i32;
+        while i < bytes.len() {
+            match bytes[i] {
+                b'(' => depth += 1,
+                b')' => depth -= 1,
+                b if b.is_ascii_whitespace() && depth == 0 => break,
+                _ => {}
+            }
+            i += 1;
+        }
+        tokens.push(&value[start..i]);
+    }
+    tokens
 }
 
 fn box_sizing_of(s: &ComputedStyle) -> BoxSizing {

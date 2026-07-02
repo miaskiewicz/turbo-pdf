@@ -352,6 +352,61 @@ fn collect_inline(element: &Element, out: &mut Vec<Cand>) {
     }
 }
 
+/// Legacy presentational attributes mapped to CSS declarations (`bgcolor`,
+/// `width`/`height`, `<font color>`). These are "presentational hints": they sit
+/// just above the UA sheet and below any real author rule (level 1, specificity
+/// 0), so an author stylesheet always overrides them. Old table-layout sites
+/// (Hacker News' orange header `<td bgcolor>`, sized `<img>`) depend on them.
+fn collect_presentational(element: &Element, out: &mut Vec<Cand>) {
+    let mut decls = Vec::new();
+    let mut add = |prop: &str, val: String| {
+        decls.push(Declaration {
+            property: prop.to_string(),
+            value: val,
+            important: false,
+        });
+    };
+    if let Some(bg) = element
+        .attr("bgcolor")
+        .map(str::trim)
+        .filter(|v| !v.is_empty())
+    {
+        add("background-color", bg.to_string());
+    }
+    if let Some(w) = element.attr("width").and_then(attr_length) {
+        add("width", w);
+    }
+    if let Some(h) = element.attr("height").and_then(attr_length) {
+        add("height", h);
+    }
+    if is_tag(element, "font") {
+        if let Some(c) = element
+            .attr("color")
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+        {
+            add("color", c.to_string());
+        }
+    }
+    if !decls.is_empty() {
+        push_decls(&decls, 1, (0, 0, 0), 0, out);
+    }
+}
+
+/// A presentational length attribute → a CSS length value: a bare number is `px`,
+/// a `N%` passes through; anything else (e.g. `width="*"`) is ignored.
+fn attr_length(v: &str) -> Option<String> {
+    let v = v.trim();
+    if let Some(pct) = v.strip_suffix('%') {
+        return pct.trim().parse::<f32>().ok().map(|_| v.to_string());
+    }
+    v.parse::<f32>().ok().map(|n| format!("{n}px"))
+}
+
+fn is_tag(element: &Element, name: &str) -> bool {
+    matches!(&element.tag, Tag::Html(t) if t.eq_ignore_ascii_case(name))
+}
+
 fn pick_winners(cands: Vec<Cand>) -> BTreeMap<String, String> {
     let mut best: BTreeMap<String, (Key, String)> = BTreeMap::new();
     for cand in cands {
@@ -381,6 +436,7 @@ fn resolve_style(
     cascade: &Cascade,
 ) -> ComputedStyle {
     let mut cands = Vec::new();
+    collect_presentational(element, &mut cands);
     collect_rules(cascade, path, &mut cands);
     collect_tokens(element, cascade, &mut cands);
     collect_inline(element, &mut cands);

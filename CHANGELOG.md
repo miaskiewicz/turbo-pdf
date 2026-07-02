@@ -54,6 +54,12 @@ PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`
   is deferred (items auto-flow). `inline-flex` now also maps to flex. Modern pages
   are grid/flex-heavy, so this is a large real-page fidelity win.
 
+- **Legacy presentational attributes** map to CSS (presentational hints, just
+  above the UA sheet, below any author rule): `bgcolor` → `background-color`,
+  `width`/`height` → lengths, `<font color>` → `color`. Old table-layout sites
+  (Hacker News' orange `<td bgcolor>` header, sized `<img>`) now paint their
+  backgrounds/sizes.
+
 ### Fixed
 - **`background` shorthand is now honored.** The cascade only read the
   `background-color`/`background-image` longhands, so `background: #fff url(...)

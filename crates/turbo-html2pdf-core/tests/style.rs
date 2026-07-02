@@ -372,3 +372,48 @@ fn directive_elements_are_styled_too() {
     );
     assert_eq!(prop(&tree, "e", "color").as_deref(), Some("red"));
 }
+
+// ---------------------------------------------------------------- presentational hints
+
+#[test]
+fn bgcolor_attribute_maps_to_background() {
+    // Legacy `bgcolor` (Hacker News' orange header) is honored as a presentational
+    // hint on the box's `background-color`.
+    let tree = styled(
+        r##"<table bgcolor="#ff6600"><tr><td>hi</td></tr></table>"##,
+        "",
+    );
+    let table = find(
+        &tree,
+        &|e| matches!(&e.tag, turbo_html2pdf_core::Tag::Html(t) if t == "table"),
+    )
+    .expect("table");
+    assert_eq!(table.style.get("background-color"), Some("#ff6600"));
+}
+
+#[test]
+fn author_css_overrides_presentational_hint() {
+    // A real author rule must beat the presentational hint (hints sit just above UA).
+    let tree = styled(
+        r##"<table bgcolor="#ff6600"><tr><td>hi</td></tr></table>"##,
+        "table { background-color: #00ff00 }",
+    );
+    let table = find(
+        &tree,
+        &|e| matches!(&e.tag, turbo_html2pdf_core::Tag::Html(t) if t == "table"),
+    )
+    .expect("table");
+    assert_eq!(table.style.get("background-color"), Some("#00ff00"));
+}
+
+#[test]
+fn width_height_attributes_map_to_lengths() {
+    let tree = styled(r#"<img width="200" height="50%">"#, "");
+    let img = find(
+        &tree,
+        &|e| matches!(&e.tag, turbo_html2pdf_core::Tag::Html(t) if t == "img"),
+    )
+    .expect("img");
+    assert_eq!(img.style.get("width"), Some("200px"));
+    assert_eq!(img.style.get("height"), Some("50%"));
+}

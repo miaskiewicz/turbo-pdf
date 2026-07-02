@@ -4,6 +4,56 @@ All notable changes to turbo-html2pdf are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow SemVer. The npm,
 PyPI, and crates.io packages release in lockstep from a `v*` tag (PyPI on `pyv*`).
 
+## [0.2.6]
+
+Real-page fidelity: a large batch of layout + cascade fixes that let complex sites
+(Wikipedia, Hacker News) render faithfully. (0.2.5 was staged but never released;
+0.2.6 supersedes it and carries everything below.)
+
+### Added
+- **CSS custom properties + `var()`.** `--*` properties inherit; `var(--name,
+  fallback)` is substituted in every value after the cascade (balanced-paren aware,
+  multiple/nested refs, depth-guarded). Design-system / CSS-in-JS layouts that
+  drive widths/flex via `var()` now resolve instead of collapsing to defaults.
+- **Sibling combinators (`+`, `~`) + stateful/structural pseudo-classes**:
+  `:not()`, `:checked`, `:enabled`, `:disabled`, `:root`, `:empty`,
+  `:only-child`, `:first/last/only-of-type`, `:link`/`:any-link`. Interactive
+  pseudos (`:hover`/`:focus`/`:active`/`:target`/`:visited`) parse but never match
+  (static resting state), so hover-revealed menus stay hidden. The lexer is
+  paren-aware (`:nth-child(2n+1)` / `:not(…)`).
+- **Inline-block / `<img>` flow within the line** (were stacked below): atomic
+  inlines share the line box with text, baseline-aligned, wrapping as words.
+- **`grid-template` shorthand** (`<rows> / <cols>` + named areas) — Vector's whole
+  page grid. Without it the axes fell back to AUTO tracks which, with named areas,
+  made taffy content-size a huge subtree per track (a >90s hang + a giant
+  zero-height container). Also **legacy table `cellpadding`** and **`<br>`/`<hr>`**
+  rendering, plus basic **form-control** styling (`input`/`textarea`/`select`/
+  `button`).
+- **Optional system-font loading** (`FontRegistry::load_system_fonts`, opt-in).
+
+### Fixed
+- **Visually-hidden / sr-only content no longer paints.** `clip:rect(...)`,
+  `clip-path:inset(50%|100%)`, and 0/1px `overflow:hidden` boxes are dropped —
+  otherwise their (usually `position:absolute`) text rendered and piled at the
+  containing block's origin. This was the Wikipedia "overlapping text" pile.
+- **Auto-inset `position:absolute` uses its static position**, not the containing
+  block's origin, per CSS. Every no-offset absolute deep in a page (navbox labels,
+  decorations) was jumping to the top-left and piling. In isolation the static
+  position ≈ the CB origin, which is why minimal repros passed while real pages
+  broke.
+- **Float text wrap**: in-flow content flows *beside* a float (narrowed column)
+  instead of clearing below it, so text wraps next to a `float:right` infobox.
+- **`@media(min-width:…)` with no space after `@media`** now parses (was dropping
+  the whole block — the desktop infobox-float rule never applied).
+- **`:link` colours apply** (were lumped with never-match pseudos), **percentage
+  table width no longer double-applied** (`width:85%` columns collapsed to 85% of
+  85%), **`<style>` text is stripped** from the visible flow, **empty table rows
+  honor explicit `height`** (spacer rows), **`text-align` resets inside tables**,
+  and **width-constrained blocks center** (`margin:auto` / `text-align` /
+  `<center>`).
+- **`visibility:hidden` / `opacity:0` boxes are dropped**, and the **`background`
+  shorthand** is honored.
+
 ## [0.2.5]
 
 ### Added

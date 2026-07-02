@@ -584,3 +584,41 @@ fn media_query_without_space_after_at_media_applies() {
     let tree = styled(r#"<p id="e" class="x">y</p>"#, css);
     assert_eq!(prop(&tree, "e", "color").as_deref(), Some("red"));
 }
+
+#[test]
+fn var_resolves_inherited_custom_property() {
+    // Custom properties inherit; `var(--x)` resolves to the inherited value.
+    let n = styled(
+        r#"<div class="p"><div id="e" class="c">x</div></div>"#,
+        ".p{--w:200px} .c{width:var(--w)}",
+    );
+    assert_eq!(prop(&n, "e", "width").as_deref(), Some("200px"));
+}
+
+#[test]
+fn var_uses_fallback_when_undefined() {
+    let n = styled(
+        r#"<div id="e" style="width:var(--missing, 50px)">x</div>"#,
+        "",
+    );
+    assert_eq!(prop(&n, "e", "width").as_deref(), Some("50px"));
+}
+
+#[test]
+fn var_multiple_in_one_value() {
+    let n = styled(
+        r#"<div class="p"><div id="e" class="c">x</div></div>"#,
+        ".p{--a:10px;--b:20px} .c{padding:var(--a) var(--b)}",
+    );
+    assert_eq!(prop(&n, "e", "padding").as_deref(), Some("10px 20px"));
+}
+
+#[test]
+fn var_nested_reference() {
+    // A custom property whose value is itself a var().
+    let n = styled(
+        r#"<div class="p"><div id="e" class="c">x</div></div>"#,
+        ".p{--base:15px;--w:var(--base)} .c{width:var(--w)}",
+    );
+    assert_eq!(prop(&n, "e", "width").as_deref(), Some("15px"));
+}

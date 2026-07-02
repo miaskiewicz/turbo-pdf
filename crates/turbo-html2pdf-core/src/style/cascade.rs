@@ -516,8 +516,93 @@ fn inherit(own: BTreeMap<String, String>, parent: &ComputedStyle) -> ComputedSty
             map.insert((*prop).to_string(), v.to_string());
         }
     }
+    // Custom properties (`--*`) inherit by default (they're how `var()` cascades).
+    for (k, v) in &parent.map {
+        if k.starts_with("--") {
+            map.insert(k.clone(), v.clone());
+        }
+    }
     map.extend(own);
+    resolve_var_refs(&mut map);
     ComputedStyle { map }
+}
+
+/// Substitute every `var(--name, fallback)` in the map's values with the resolved
+/// custom-property value (or the fallback). Custom properties are read from the
+/// same map (already inherited), so `var()` sees the cascaded value. Runs after
+/// inheritance so a child's `var()` picks up an ancestor's custom property.
+fn resolve_var_refs(map: &mut BTreeMap<String, String>) {
+    let vars: BTreeMap<String, String> = map
+        .iter()
+        .filter(|(k, _)| k.starts_with("--"))
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+    for (key, value) in map.iter_mut() {
+        if value.contains("var(") {
+            *value = substitute_vars(value, &vars, 0);
+            let _ = key;
+        }
+    }
+}
+
+/// Replace `var(--name[, fallback])` references in `value` using `vars`. Balanced
+/// parens (a fallback may itself contain `var()` / functions); a missing or empty
+/// custom property falls back. Depth-limited against a cyclic `--a: var(--a)`.
+fn substitute_vars(value: &str, vars: &BTreeMap<String, String>, depth: u8) -> String {
+    if depth > 16 || !value.contains("var(") {
+        return value.to_string();
+    }
+    let bytes = value.as_bytes();
+    let mut out = String::with_capacity(value.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if value[i..].starts_with("var(") {
+            let inner_start = i + 4;
+            let Some(close) = matching_paren(value, inner_start) else {
+                out.push_str(&value[i..]);
+                break;
+            };
+            let inner = &value[inner_start..close];
+            out.push_str(&resolve_one_var(inner, vars, depth));
+            i = close + 1;
+        } else {
+            let ch = value[i..].chars().next().unwrap();
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    out
+}
+
+/// The index of the `)` matching the `(` that opened just before `open` (i.e. the
+/// close of the `var(` at `open-4`), accounting for nested parens.
+fn matching_paren(s: &str, open: usize) -> Option<usize> {
+    let mut depth = 1i32;
+    for (rel, ch) in s[open..].char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(open + rel);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Resolve one `var()` body (`--name` or `--name, fallback`) to its value.
+fn resolve_one_var(inner: &str, vars: &BTreeMap<String, String>, depth: u8) -> String {
+    let (name, fallback) = match inner.find(',') {
+        Some(c) => (inner[..c].trim(), inner[c + 1..].trim()),
+        None => (inner.trim(), ""),
+    };
+    match vars.get(name).map(|v| v.trim()).filter(|v| !v.is_empty()) {
+        Some(v) => substitute_vars(v, vars, depth + 1),
+        None => substitute_vars(fallback, vars, depth + 1),
+    }
 }
 
 fn resolve_style(

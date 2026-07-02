@@ -333,3 +333,28 @@ fn colspan_cell_can_exceed_column_sum() {
     assert_eq!(rows(&t).len(), 2);
     assert!(cells(&rows(&t)[0])[0].width > 0.0);
 }
+
+#[test]
+fn empty_spacer_row_keeps_its_explicit_height() {
+    // An empty `<tr style="height:5px">` (Hacker News' inter-item spacer) must
+    // reserve 5px instead of collapsing to zero.
+    let spacer = ela(
+        "tr",
+        &[],
+        &[("display", "table-row"), ("height", "5px")],
+        vec![],
+    );
+    let t = table(
+        vec![tr(vec![td(&[], "a")]), spacer, tr(vec![td(&[], "b")])],
+        &[],
+        500.0,
+    );
+    let rs = rows(&t);
+    assert_eq!(rs.len(), 3);
+    assert!(
+        (rs[1].height - 5.0).abs() < 0.5,
+        "spacer row height should be 5px, got {}",
+        rs[1].height
+    );
+    assert!(rs[2].y >= rs[1].y + 4.5, "row after spacer sits below it");
+}

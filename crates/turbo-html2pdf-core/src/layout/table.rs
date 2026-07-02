@@ -18,7 +18,8 @@ use super::boxgen::{BoxKind, LayoutBox};
 use super::flex::natural_width;
 use super::fragment::{Fragment, FragmentContent, NodeId, RepeatKind};
 use super::value::{
-    resolve_box_style, BorderEdges, Display, LengthPct, ResolveCtx, VAlign, DEFAULT_FONT_SIZE,
+    parse_px, resolve_box_style, BorderEdges, Display, LengthPct, ResolveCtx, VAlign,
+    DEFAULT_FONT_SIZE,
 };
 
 // --------------------------------------------------------------------------
@@ -28,6 +29,10 @@ use super::value::{
 struct RowRef<'a> {
     node_id: NodeId,
     cells: Vec<&'a LayoutBox>,
+    /// The row's explicit `height` in px (0 if none) — a floor on the row height,
+    /// so an empty spacer row (`<tr style="height:5px">`, common in table layouts
+    /// like Hacker News) reserves its space instead of collapsing to zero.
+    min_height: f32,
     repeat: Option<RepeatKind>,
     /// The row's PDF/UA structure role (`pdf-ua`), so the synthetic row fragment
     /// can carry `TableRow` for the tagged-PDF struct tree (AC-11.1).
@@ -61,10 +66,21 @@ fn row_ref<'a>(row: &'a LayoutBox, repeat: Option<RepeatKind>) -> RowRef<'a> {
     RowRef {
         node_id: row.node_id,
         cells: cells_of(row),
+        min_height: row_min_height(row),
         repeat,
         #[cfg(feature = "pdf-ua")]
         ua_role: row.ua_role,
     }
+}
+
+/// A table row's explicit `height` in px (0 if unset/relative) — used as a floor
+/// on the computed row height.
+fn row_min_height(row: &LayoutBox) -> f32 {
+    row.style
+        .get("height")
+        .and_then(|v| parse_px(v, DEFAULT_FONT_SIZE))
+        .unwrap_or(0.0_f32)
+        .max(0.0)
 }
 
 fn collect_rows<'a>(items: &'a [LayoutBox]) -> Vec<RowRef<'a>> {
@@ -321,8 +337,10 @@ fn expand_rows(h: &mut [f32], c: &LaidCell) {
     }
 }
 
-fn row_heights(laid: &[LaidCell], nrows: usize) -> Vec<f32> {
-    let mut h = vec![0.0_f32; nrows];
+fn row_heights(laid: &[LaidCell], rows: &[RowRef]) -> Vec<f32> {
+    // Seed each row at its explicit `height` floor (empty spacer rows), then grow
+    // to fit content.
+    let mut h: Vec<f32> = rows.iter().map(|r| r.min_height).collect();
     for c in laid {
         if c.p.rowspan == 1 {
             h[c.p.row] = h[c.p.row].max(c.content_h);
@@ -430,7 +448,7 @@ pub(crate) fn layout_table(
     }
     let cols = column_widths(&table.style, &placed, ncols, cw, ctx.fonts);
     let laid = layout_cells(&placed, &cols, fs, ctx);
-    let row_h = row_heights(&laid, rows.len());
+    let row_h = row_heights(&laid, &rows);
     let geom = Geom {
         col_x: prefix(&cols),
         row_y: prefix(&row_h),

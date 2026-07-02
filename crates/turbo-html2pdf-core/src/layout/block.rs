@@ -51,22 +51,31 @@ fn containing_block(bs: &BoxStyle, ctx: &Ctx) -> (f32, f32, f32) {
     }
 }
 
-/// The border-box top-left of an out-of-flow (`absolute`/`fixed`) box: its
-/// containing-block origin offset by the resolved insets (`left`/`right`,
-/// `top`/`bottom`), plus its own margins. A missing (`auto`) inset anchors to the
-/// CB's start edge; `right`/`bottom` anchor from the far edge when their opposite
-/// is `auto`. Percentage insets resolve against the CB width (height is unknown
-/// mid-layout, so `%` top/bottom also use width — a documented approximation).
-fn out_of_flow_origin(bs: &BoxStyle, cb_width: f32, ctx: &Ctx) -> (f32, f32) {
+/// The border-box top-left of an out-of-flow box. `static_pos` is where the box
+/// would sit in normal flow (its content-box origin there): per CSS an `auto`
+/// inset resolves to that **static position**, NOT the containing-block origin —
+/// so a `position:absolute` decoration with no `top`/`left` stays where it is in
+/// the document (e.g. a navbox's rotated label at the bottom) instead of jumping
+/// to the top-left of the CB and piling up with every other no-offset absolute.
+fn out_of_flow_origin(
+    bs: &BoxStyle,
+    cb_width: f32,
+    ctx: &Ctx,
+    static_pos: (f32, f32),
+) -> (f32, f32) {
     let (cbx, cby, cbw) = containing_block(bs, ctx);
     let bbw = border_box_width(bs, cbw.max(cb_width));
     let x = match (bs.inset_left.resolve(cbw), bs.inset_right.resolve(cbw)) {
         (Some(l), _) => cbx + l,
         (None, Some(r)) => cbx + cbw - bbw - r,
-        (None, None) => cbx,
+        (None, None) => static_pos.0,
     };
-    let top = bs.inset_top.resolve(cbw);
-    let y = cby + top.unwrap_or(0.0);
+    let y = match (bs.inset_top.resolve(cbw), bs.inset_bottom.resolve(cbw)) {
+        (Some(t), _) => cby + t,
+        // The CB height is unknown mid-layout; anchor `bottom`-only boxes from the
+        // static position too (a documented approximation).
+        (None, Some(_)) | (None, None) => static_pos.1,
+    };
     (x + bs.margin.left, y + bs.margin.top)
 }
 
@@ -320,10 +329,12 @@ fn layout_block_flow(
     let mut float_bottom = cy;
     for kid in kids {
         let kbs = resolve(kid, cw, fs);
-        // `absolute`/`fixed`: taken out of flow — laid out at the containing
-        // block + insets, contributing nothing to the cursor or margin run.
+        // `absolute`/`fixed`: taken out of flow — placed at its insets against the
+        // containing block, or (for `auto` insets) at its static in-flow position.
+        // Contributes nothing to the cursor or margin run.
         if kbs.position.is_out_of_flow() {
-            let (bx, by) = out_of_flow_origin(&kbs, cw, ctx);
+            let static_pos = (cx + kbs.margin.left, cursor + pending.max(kbs.margin.top));
+            let (bx, by) = out_of_flow_origin(&kbs, cw, ctx, static_pos);
             frags.push(layout_box(kid, bx, by, cw, fs, ctx));
             continue;
         }

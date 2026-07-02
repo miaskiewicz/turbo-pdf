@@ -166,3 +166,22 @@ fn absolute_siblings_no_offset_share_cb_origin() {
         b[0]
     );
 }
+
+#[test]
+fn auto_inset_absolute_uses_static_position_not_cb_origin() {
+    // An absolute element with NO top/left resolves to its STATIC position (where it
+    // would sit in flow) — not the containing-block origin. Otherwise every
+    // no-offset absolute deep in a page (navbox labels, decorations) jumps to the
+    // top and piles up.
+    let f = lay(
+        r#"<body><div style="height:300px"></div>
+           <div style="position:absolute;width:20px;height:20px;background-color:#ff0000"></div></body>"#,
+        800.0,
+    );
+    let b = rect(&f, (255, 0, 0)).expect("absolute box");
+    assert!(
+        b[1] >= 290.0,
+        "auto-inset absolute at its static flow y (~300), got y={}",
+        b[1]
+    );
+}

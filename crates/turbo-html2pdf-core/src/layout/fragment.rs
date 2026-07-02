@@ -154,6 +154,14 @@ pub struct Fragment {
     pub content: FragmentContent,
     pub break_meta: BreakMeta,
     pub children: Vec<Fragment>,
+    /// The box's used `z-index` (`None` = `auto`), meaningful only when
+    /// [`Fragment::is_positioned`]. Drives stacking-context paint order (§9.9);
+    /// see [`Fragment::paint_z`]/[`Fragment::paint_order`].
+    pub z_index: Option<i32>,
+    /// Whether this fragment's box is positioned (`position` != `static`). A
+    /// positioned box paints above its in-flow siblings within the same stacking
+    /// context, and (with a `z-index`) participates in z ordering.
+    pub is_positioned: bool,
     /// Cross-reference payload (`xref` feature, AC-3.25): the destination name
     /// of a `<t:anchor name>` that landed here, and/or the `#fragment` target of
     /// an `<a href>` whose box this is. Only present under `--features xref`; the
@@ -202,6 +210,8 @@ impl Fragment {
             content,
             break_meta: BreakMeta::default(),
             children: Vec::new(),
+            z_index: None,
+            is_positioned: false,
             #[cfg(feature = "xref")]
             xref: XrefMeta::default(),
             #[cfg(feature = "pdf-ua")]
@@ -214,6 +224,33 @@ impl Fragment {
     /// The bottom edge of this fragment (`y + height`).
     pub fn bottom(&self) -> f32 {
         self.y + self.height
+    }
+
+    /// The effective stacking level used to order this fragment against its
+    /// siblings when painting: the used `z-index` for a positioned box, else `0`
+    /// (an in-flow box stacks at level 0, ignoring any stray `z-index`).
+    pub fn paint_z(&self) -> i32 {
+        if self.is_positioned {
+            self.z_index.unwrap_or(0)
+        } else {
+            0
+        }
+    }
+
+    /// This fragment's child indices in back-to-front paint order (CSS 2.2 §9.9,
+    /// a pragmatic subset): a *stable* sort by `(paint_z, is_positioned)`, so
+    /// within one stacking context negative-`z` boxes paint first, then in-flow
+    /// non-positioned boxes, then `z:auto`/`0` positioned boxes, then positive-`z`
+    /// — with source (DOM) order breaking ties. The children `Vec` itself keeps
+    /// its layout (top-down galley) order so the paginator's flow walk is
+    /// unaffected; only painters reorder via this view.
+    pub fn paint_order(&self) -> Vec<usize> {
+        let mut order: Vec<usize> = (0..self.children.len()).collect();
+        order.sort_by_key(|&i| {
+            let c = &self.children[i];
+            (c.paint_z(), c.is_positioned)
+        });
+        order
     }
 
     /// Shift this fragment and its whole subtree by `(dx, dy)`.

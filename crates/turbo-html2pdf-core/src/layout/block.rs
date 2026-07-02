@@ -403,6 +403,8 @@ pub(crate) fn layout_box_sized(
         content: content_kind(lb, bs),
         break_meta: break_meta_of(bs),
         children,
+        z_index: bs.z_index,
+        is_positioned: bs.position != Position::Static,
         #[cfg(feature = "xref")]
         xref: box_xref(lb),
         #[cfg(feature = "pdf-ua")]
@@ -522,6 +524,8 @@ fn image_fragment(lb: &LayoutBox, bx: f32, by: f32, sized: &SizedImage, bs: &Box
         content: FragmentContent::Image(sized.placement.clone()),
         break_meta: break_meta_of(bs),
         children: Vec::new(),
+        z_index: bs.z_index,
+        is_positioned: bs.position != Position::Static,
         #[cfg(feature = "xref")]
         xref: super::fragment::XrefMeta::default(),
         #[cfg(feature = "pdf-ua")]

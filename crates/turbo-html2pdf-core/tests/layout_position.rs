@@ -128,6 +128,87 @@ fn absolute_is_relative_to_positioned_ancestor() {
     approx(box_xy(&g, "ff0000").1, 70.0, "abs top in relative parent");
 }
 
+/// The nearest ancestor whose direct children include a box coloured `color`.
+fn parent_of<'a>(g: &'a Fragment, color: &str) -> &'a Fragment {
+    let want = hex(color);
+    let has = |f: &&Fragment| {
+        f.children.iter().any(
+            |c| matches!(&c.content, FragmentContent::Box { background: Some(bg), .. } if *bg == want),
+        )
+    };
+    all(g)
+        .into_iter()
+        .find(has)
+        .unwrap_or_else(|| panic!("no parent of a box with background #{color}"))
+}
+
+/// The background colours of `f`'s box children, in back-to-front paint order.
+fn paint_colors(f: &Fragment) -> Vec<Rgba> {
+    f.paint_order()
+        .into_iter()
+        .filter_map(|i| match &f.children[i].content {
+            FragmentContent::Box {
+                background: Some(bg),
+                ..
+            } => Some(*bg),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn lower_z_index_paints_under_higher() {
+    // Two overlapping absolute boxes; the *later* DOM box has the *lower*
+    // z-index, so it must paint UNDER (before) the earlier one. Paint order is
+    // therefore z:1 (green) then z:2 (red) — the reverse of DOM order.
+    let g = galley(&format!(
+        "{}{}",
+        probe("ff0000", "position:absolute;top:0;left:0;z-index:2"),
+        probe("00aa00", "position:absolute;top:0;left:0;z-index:1"),
+    ));
+    let colors = paint_colors(parent_of(&g, "ff0000"));
+    assert_eq!(
+        colors,
+        vec![hex("00aa00"), hex("ff0000")],
+        "z:1 must paint before z:2"
+    );
+}
+
+#[test]
+fn positioned_paints_over_in_flow_sibling() {
+    // A positioned box (no z-index) paints above an in-flow sibling regardless
+    // of source order: the positioned red box comes first in the DOM but paints
+    // last (on top), after the in-flow grey box.
+    let g = galley(&format!(
+        "{}{}",
+        probe("ff0000", "position:relative;top:0;left:0"),
+        probe("aaaaaa", ""),
+    ));
+    let colors = paint_colors(parent_of(&g, "aaaaaa"));
+    assert_eq!(
+        colors,
+        vec![hex("aaaaaa"), hex("ff0000")],
+        "in-flow paints before a positioned sibling"
+    );
+}
+
+#[test]
+fn negative_z_paints_under_in_flow() {
+    // A positioned box with a negative z-index sits behind in-flow content: the
+    // red absolute box (z:-1) paints first, then the grey in-flow box over it.
+    let g = galley(&format!(
+        "{}{}",
+        probe("ff0000", "position:absolute;top:0;left:0;z-index:-1"),
+        probe("aaaaaa", ""),
+    ));
+    let colors = paint_colors(parent_of(&g, "aaaaaa"));
+    assert_eq!(
+        colors,
+        vec![hex("ff0000"), hex("aaaaaa")],
+        "negative-z positioned paints under in-flow"
+    );
+}
+
 #[test]
 fn fixed_is_relative_to_the_page_origin() {
     // `position:fixed` is positioned against the initial containing block (the

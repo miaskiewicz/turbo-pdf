@@ -39,7 +39,7 @@ code, kbd, samp { display: inline }
 sub, sup, abbr, cite, q, mark, u, s, label, time { display: inline }
 sub { vertical-align: sub }
 sup { vertical-align: super }
-table { display: table }
+table { display: table; text-align: left }
 thead { display: table-header-group }
 tfoot { display: table-footer-group }
 tr { display: table-row }

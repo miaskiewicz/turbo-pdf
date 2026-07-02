@@ -157,3 +157,36 @@ fn double_br_creates_vertical_gap() {
     let gap = bottom[1] - (top[1] + top[3]);
     assert!(gap > 15.0, "two <br> create a multi-line gap, got {}", gap);
 }
+
+// --------------------------------------------------------------------------
+// nav logo: a sized <img> lays out at the top-left of the header
+// --------------------------------------------------------------------------
+
+#[test]
+fn sized_img_lays_out_at_top_left_at_its_size() {
+    // HN's `<img src="y18.svg" width=18 height=18>` logo. Even with no image bytes
+    // (image-free fallback) the box must occupy its declared 18x18 at the top-left,
+    // so the logo has a slot to paint into.
+    let html = r#"<body><table><tbody><tr>
+            <td><img src="y18.svg" width="18" height="18" style="background-color:#ff0000"></td>
+            <td><b>Hacker News</b></td>
+        </tr></tbody></table></body>"#;
+    let f = lay(html, 1280.0);
+    let logo = rect(&f, (255, 0, 0)).expect("logo box");
+    assert!(
+        logo[0] < 5.0 && logo[1] < 5.0,
+        "logo at top-left, got x={} y={}",
+        logo[0],
+        logo[1]
+    );
+    assert!(
+        (logo[2] - 18.0).abs() < 1.0,
+        "logo 18px wide, got {}",
+        logo[2]
+    );
+    assert!(
+        (logo[3] - 18.0).abs() < 1.0,
+        "logo 18px tall, got {}",
+        logo[3]
+    );
+}

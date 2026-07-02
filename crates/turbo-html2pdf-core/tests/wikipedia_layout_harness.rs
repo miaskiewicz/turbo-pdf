@@ -347,3 +347,24 @@ fn text_wraps_beside_a_right_float() {
         float_box[0]
     );
 }
+
+#[test]
+fn infobox_floats_right_via_no_space_media_query() {
+    // Wikipedia floats its taxobox with `.mw-parser-output .infobox{float:right}`
+    // inside `@media(min-width:640px)` (no space). At desktop width the infobox
+    // must float right with the article text wrapping to its left.
+    let css = "@media(min-width:640px){.mw-parser-output .infobox{float:right;width:300px}}";
+    let html = r#"<body><div class="mw-parser-output">
+        <table class="infobox" style="background-color:#ff0000"><tbody><tr><td>Cat</td></tr></tbody></table>
+        <p style="background-color:#00ff00">The cat is a small domesticated carnivorous mammal member of Felidae with lots of words here</p>
+      </div></body>"#;
+    let mut d = Diagnostics::default();
+    let f = layout_html(html, css, 1000.0, &FontRegistry::new(), &mut d).expect("layout");
+    let info = rect(&f, RED).expect("infobox");
+    let para = rect(&f, GREEN).expect("paragraph");
+    assert!(info[0] > 500.0, "infobox floats right, got x={}", info[0]);
+    assert!(
+        para[0] + para[2] <= info[0] + 1.0,
+        "text wraps left of infobox"
+    );
+}

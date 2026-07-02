@@ -150,9 +150,13 @@ impl Scan {
 
 fn at_rule_from(chunk: &Chunk) -> AtRule {
     let prelude = chunk.prelude.trim_start_matches('@');
-    let (name, rest) = prelude
-        .split_once(char::is_whitespace)
-        .unwrap_or((prelude, ""));
+    // The name ends at the first whitespace *or* `(` — `@media(min-width:640px)`
+    // (no space, common in minified CSS) must still yield name `media`, not
+    // `media(min-width:640px)`, or the whole media block is dropped.
+    let (name, rest) = match prelude.find(|c: char| c.is_whitespace() || c == '(') {
+        Some(i) => (&prelude[..i], &prelude[i..]),
+        None => (prelude, ""),
+    };
     AtRule {
         name: name.trim().to_ascii_lowercase(),
         prelude: rest.trim().to_string(),

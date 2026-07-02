@@ -574,3 +574,13 @@ fn nth_child_still_parses_with_paren_arg() {
     assert_eq!(prop(&n, "b", "color"), None);
     assert_eq!(prop(&n, "c", "color").as_deref(), Some("red"));
 }
+
+#[test]
+fn media_query_without_space_after_at_media_applies() {
+    // Minified CSS writes `@media(min-width:640px){…}` with no space; the rule
+    // inside must still apply at a matching viewport (name parsed as `media`, not
+    // `media(min-width:640px)`). Wikipedia floats its infobox this way.
+    let css = "@media(min-width:640px){ .x { color: red } }";
+    let tree = styled(r#"<p id="e" class="x">y</p>"#, css);
+    assert_eq!(prop(&tree, "e", "color").as_deref(), Some("red"));
+}

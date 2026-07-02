@@ -210,10 +210,47 @@ pub(crate) fn is_hidden(style: &ComputedStyle) -> bool {
     if style.get("visibility").map(str::trim) == Some("hidden") {
         return true;
     }
-    matches!(
+    if matches!(
         style.get("opacity").map(|v| v.trim().parse::<f32>()),
         Some(Ok(o)) if o <= 0.0
-    )
+    ) {
+        return true;
+    }
+    is_visually_hidden(style)
+}
+
+/// The "visually hidden" / screen-reader-only patterns: content that's in the DOM
+/// (for a11y) but clipped away so it never paints. Real pages (Wikipedia, Nike)
+/// use dozens; without honoring them their text renders — and, being
+/// `position:absolute` with no offset, piles up at the containing block's origin.
+fn is_visually_hidden(style: &ComputedStyle) -> bool {
+    // `clip: rect(...)` — deprecated everywhere *except* the classic sr-only clip
+    // hack (`clip:rect(1px,1px,1px,1px)` / `rect(0,0,0,0)`), so any rect() clip is
+    // the hide pattern.
+    if style
+        .get("clip")
+        .map(str::trim)
+        .is_some_and(|c| c.starts_with("rect("))
+    {
+        return true;
+    }
+    // `clip-path: inset(50%|100%)` clips the whole box away.
+    if let Some(cp) = style.get("clip-path").map(str::trim) {
+        if cp.contains("inset(") && (cp.contains("50%") || cp.contains("100%")) {
+            return true;
+        }
+    }
+    // A 0/1px box with clipped overflow — the modern visually-hidden pattern.
+    let tiny = |p: &str| {
+        matches!(
+            style.get(p).map(str::trim),
+            Some("0") | Some("0px") | Some("1px")
+        )
+    };
+    let overflow_hidden = ["overflow", "overflow-x", "overflow-y"]
+        .iter()
+        .any(|p| style.get(p).map(str::trim) == Some("hidden"));
+    tiny("width") && tiny("height") && overflow_hidden
 }
 
 fn classify_html(el: &StyledElement, ids: &mut Ids) -> Option<Level> {
